@@ -124,5 +124,135 @@ class ScriptTests(unittest.TestCase):
         self.assertIsNotNone(data["json_ld"][1]["syntax_error"])
 
 
+class ExtractionTests(unittest.TestCase):
+    def test_svg_titles_are_not_document_titles(self):
+        markup = '<html><head><title>Real</title></head><body><svg><title>Icon</title><text>glyph</text></svg><p>Body copy</p></body></html>'
+        data = html.extract(markup)
+        self.assertEqual(data["titles"], ["Real"])
+        self.assertEqual(data["visible_text"]["chars"], len("Body copy"))
+
+    def test_image_link_anchor_text_uses_alt_and_flags_missing_alt(self):
+        markup = ('<a href="/a"><img src="a.png" alt=" Company  logo "></a><a href="/b"><img src="b.png"></a>'
+                  '<a href="/c">Plain <b>text</b></a>')
+        links = html.extract(markup)["links"]
+        self.assertEqual((links[0]["text"], links[0]["image_alts"], links[0]["anchor_text"]), ("", [" Company  logo "], "Company logo"))
+        self.assertEqual((links[1]["image_alts"], links[1]["anchor_text"]), ([None], ""))
+        self.assertEqual((links[2]["image_alts"], links[2]["anchor_text"]), ([], "Plain text"))
+
+    def test_visible_text_excludes_non_content_and_keeps_block_words_apart(self):
+        markup = ('<html><head><title>T</title><style>p{}</style></head><body><script>var hidden = 1</script>'
+                  '<noscript>No script</noscript><div>One two</div><div>three</div></body></html>')
+        data = html.extract(markup)
+        self.assertEqual(data["visible_text"], {"chars": len("One two three"), "words": 3, "excludes": data["visible_text"]["excludes"]})
+
+    def test_rendering_hint_needs_marker_and_little_text(self):
+        shell = '<html><body><div id="root"></div><noscript>You need to enable JavaScript.</noscript></body></html>'
+        hint = html.extract(shell)["rendering_hint"]
+        self.assertEqual(hint["shell_markers"], ['id="root"', "noscript-javascript-notice"])
+        self.assertTrue(hint["possible_client_rendered"])
+        rendered = '<html><body><div id="root"><p>' + "word " * 200 + "</p></div></body></html>"
+        self.assertFalse(html.extract(rendered)["rendering_hint"]["possible_client_rendered"])
+        self.assertFalse(html.extract("<html><body><p>Short page</p></body></html>")["rendering_hint"]["possible_client_rendered"])
+
+
+def detailed_report():
+    data = report()
+    audits = data["audits"]
+    node = {"type": "node", "selector": "img.hero", "snippet": '<img class="hero">', "nodeLabel": "img", "path": "dropped"}
+    audits["unsized-images"] = {"title": "Unsized images", "score": 0, "scoreDisplayMode": "binary",
+                                "details": {"type": "table", "items": [{"url": "https://example.com/hero.jpg", "node": node, "ignored": 1}]}}
+    audits["render-blocking-resources"] = {"title": "Render blocking", "score": 0.4, "scoreDisplayMode": "metricSavings",
+                                           "details": {"type": "opportunity", "overallSavingsMs": 300,
+                                                       "items": [{"url": "https://example.com/%d.css" % i, "wastedMs": i} for i in range(15)]}}
+    audits["bootup-time"] = {"title": "Boot-up", "score": 0.7, "details": "unexpected shape"}
+    audits["largest-contentful-paint-element"] = {
+        "title": "LCP element", "score": None, "scoreDisplayMode": "informative", "displayValue": "3,210 ms",
+        "details": {"type": "list", "items": [
+            {"type": "table", "items": [{"node": {"type": "node", "selector": "div.hero > img"}}]},
+            {"type": "table", "items": [{"phase": "TTFB", "timing": 600, "percent": "19%"}]}]}}
+    audits["layout-shift-elements"] = {
+        "title": "Layout shifts", "score": None, "scoreDisplayMode": "informative",
+        "details": {"type": "table", "items": [{"node": {"type": "node", "selector": "div.banner"}, "score": 0.12}]}}
+    audits["link-text"] = {"title": "Links have descriptive text", "score": 0, "scoreDisplayMode": "binary",
+                           "details": {"type": "table", "items": [
+                               {"href": "https://example.com/x" + "y" * 400, "text": "click here",
+                                "source": {"type": "source-location", "url": "https://example.com/app.js", "line": 12},
+                                "total": {"type": "numeric", "value": 5}}]}}
+    return data
+
+
+class DetailAndBatchTests(unittest.TestCase):
+    def test_failed_audits_carry_bounded_items_and_rating(self):
+        result = psi.summarize(detailed_report())
+        failed = {a["id"]: a for a in result["failed_audits"]}
+        # Sorted by (score, id): the two score-0 audits come first, alphabetically.
+        self.assertEqual([a["id"] for a in result["failed_audits"]][:2], ["link-text", "unsized-images"])
+        self.assertEqual(failed["unsized-images"]["rating"], "fail")
+        self.assertEqual(failed["largest-contentful-paint"]["rating"], "average")
+        self.assertEqual(failed["unsized-images"]["items"], [{"url": "https://example.com/hero.jpg", "node": {
+            "selector": "img.hero", "snippet": '<img class="hero">', "nodeLabel": "img"}}])
+        blocking = failed["render-blocking-resources"]
+        self.assertEqual((len(blocking["items"]), blocking["items_total"], blocking["estimated_savings_ms"]), (psi.ITEM_LIMIT, 15, 300))
+        link = failed["link-text"]["items"][0]
+        self.assertEqual(len(link["href"]), psi.TEXT_LIMIT)
+        self.assertEqual((link["source"], link["total"]), ("https://example.com/app.js:12", 5))
+        # An unexpected details shape degrades to no items instead of failing the whole summary.
+        self.assertEqual((failed["bootup-time"]["items"], failed["bootup-time"]["items_total"]), ([], 0))
+
+    def test_informative_audits_are_kept_as_diagnostics(self):
+        diagnostics = psi.summarize(detailed_report())["diagnostics"]
+        lcp = diagnostics["lcp_element"][0]
+        self.assertEqual(lcp["items"], [{"node": {"selector": "div.hero > img"}}, {"phase": "TTFB", "timing": 600, "percent": "19%"}])
+        self.assertEqual(diagnostics["layout_shifts"][0]["items"], [{"node": {"selector": "div.banner"}, "score": 0.12}])
+        self.assertEqual(psi.summarize(report())["diagnostics"], {})
+
+    def test_batch_measures_each_url_and_indexes_results(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            urls = Path(temporary) / "urls.txt"
+            urls.write_text("# templates\nhttps://example.com/\n\nhttps://example.com/a?b=1\nhttps://example.com/\n")
+            destination = Path(temporary) / "psi"
+            argv = ["pagespeed_check.py", "--urls-file", str(urls), "--output-dir", str(destination)]
+            with patch.object(psi.sys, "argv", argv), patch.object(psi, "public_url") as check, \
+                    patch.object(psi, "collect", side_effect=[{"lighthouseResult": report()}, ValueError("PageSpeed HTTP 429.")]), \
+                    redirect_stdout(io.StringIO()):
+                self.assertEqual(psi.main(), 1)
+            index = json.loads((destination / "index.json").read_text())
+            self.assertEqual([e["directory"] for e in index["urls"]], ["01-example-com", "02-example-com-a"])
+            self.assertEqual([e["status"] for e in index["urls"]], ["measured", "error"])
+            self.assertTrue((destination / "01-example-com" / "mobile.raw.json").is_file())
+            self.assertEqual(json.loads((destination / "02-example-com-a" / "summary.json").read_text())["target_url"], "https://example.com/a?b=1")
+            self.assertEqual(check.call_count, 2)  # the duplicate line was dropped
+
+    def test_batch_validates_every_url_before_any_request(self):
+        def reject_local(value):
+            if "localhost" in value:
+                raise ValueError("local")
+
+        with tempfile.TemporaryDirectory() as temporary:
+            urls = Path(temporary) / "urls.txt"
+            urls.write_text("https://example.com/\nhttp://localhost:3000/\n")
+            destination = Path(temporary) / "psi"
+            argv = ["pagespeed_check.py", "--urls-file", str(urls), "--output-dir", str(destination)]
+            with patch.object(psi.sys, "argv", argv), patch.object(psi, "public_url", side_effect=reject_local), \
+                    patch.object(psi, "collect") as collect, redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+                self.assertEqual(psi.main(), 1)
+            collect.assert_not_called()
+            self.assertFalse(destination.exists())
+
+    def test_batch_limit_and_exclusive_inputs(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            urls = Path(temporary) / "urls.txt"
+            urls.write_text("\n".join("https://example.com/%d" % i for i in range(psi.MAX_BATCH + 1)))
+            argv = ["pagespeed_check.py", "--urls-file", str(urls), "--output-dir", str(Path(temporary) / "psi")]
+            with patch.object(psi.sys, "argv", argv), redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+                self.assertEqual(psi.main(), 1)
+            self.assertFalse((Path(temporary) / "psi").exists())
+            argv = ["pagespeed_check.py", "https://example.com", "--urls-file", str(urls), "--output-dir", str(Path(temporary) / "other")]
+            with patch.object(psi.sys, "argv", argv), redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit) as stop:
+                    psi.main()
+            self.assertEqual(stop.exception.code, 2)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -90,10 +90,11 @@ You can ask Codex to open or summarize any of these files. Screenshots and perfo
 
 ## PageSpeed and helper scripts
 
-The skill includes two optional Python helpers, with no extra Python packages required:
+The skill includes three optional Python helpers, with no extra Python packages required:
 
-- `pagespeed_check.py` checks public pages with Google's PageSpeed Insights on mobile, desktop or both. It saves the original results and a summary with scores, measured metrics and diagnostics. It can also read a saved Lighthouse report from a local project.
-- `parse_html.py` extracts titles, metadata, headings, links, image attributes and JSON-LD from saved HTML.
+- `pagespeed_check.py` checks public pages with Google's PageSpeed Insights on mobile, desktop or both, one page or a list of up to 20. It saves the original results and a summary with scores, measured metrics, the affected elements and files behind each failing check, and diagnostics such as the LCP element. It can also read a saved Lighthouse report from a local project.
+- `parse_html.py` extracts titles, metadata, headings, links (with image alt text as anchor text), image attributes, JSON-LD and visible-text size from saved HTML.
+- `validate_audit.py` checks a finished audit folder before you rely on it: required files, `findings.json` structure, evidence links that actually exist, matching finding IDs across the report files, and accidentally saved secrets. It checks structure only and does not judge the SEO conclusions.
 
 You need Python 3.9+ to run the scripts. PageSpeed needs network access and may require a Google API key if keyless quota is unavailable; the helper reads `PAGESPEED_API_KEY` from the environment. Local websites use local Lighthouse measurements. Missing data is reported as unknown. See [script usage and examples](references/scripts.md).
 

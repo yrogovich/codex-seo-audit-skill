@@ -32,7 +32,7 @@ For a local project, localhost URL, or pre-deployment review, use `mode: local-p
 
 Read [reporting.md](references/reporting.md) and save a report, action plan, URL inventory, and machine-readable findings in a fresh `seo-audits/<hostname>/<date>-<run>/` directory inside the workspace. Use the report structure in that reference; no additional publishing service is required. PDF, slides, or spreadsheets are optional when requested and supported.
 
-Before finishing, reconcile the inventory and coverage counts, verify evidence paths and references, and recheck high-impact findings against their raw evidence. Cover all core areas even if their status is unknown. Do not label sampled findings site-wide. A blocked audit still produces an honest partial report and specific next evidence needed.
+Before finishing, reconcile the inventory and coverage counts, verify evidence paths and references, and recheck high-impact findings against their raw evidence. Run `scripts/validate_audit.py` on the audit directory (see [scripts.md](references/scripts.md)) and resolve its errors; it checks structure, references, finding-ID agreement and saved secrets, not SEO conclusions. Cover all core areas even if their status is unknown. Do not label sampled findings site-wide. A blocked audit still produces an honest partial report and specific next evidence needed.
 
 End with the most important findings, coverage limits, links to deliverables, and the next recommended action. For a repeat audit, compare equivalent URLs, measurements, and scope; classify resolved, persistent, new, and unverified findings.
 

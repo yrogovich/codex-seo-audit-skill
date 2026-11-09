@@ -9,6 +9,14 @@ from pathlib import Path
 import sys
 from urllib.parse import urljoin
 
+# Text inside these elements is not visible page content. <title> is listed so a stray
+# body title never counts as visible text; head content is skipped separately.
+SKIP_TEXT = {"script", "style", "noscript", "template", "svg", "title"}
+# Operational cue, not an SEO standard: a client-rendering marker plus very little
+# server-delivered text suggests the page needs a browser check.
+SPA_TEXT_THRESHOLD = 400
+SPA_ROOT_IDS = {"root", "app", "__next", "__nuxt", "___gatsby"}
+
 
 class Extractor(HTMLParser):
     def __init__(self):
@@ -19,9 +27,21 @@ class Extractor(HTMLParser):
         self.text = []
         self.link = None
         self.link_text = []
+        self.link_images = []
+        self.skip = {}
+        self.in_head = False
+        self.visible = []
+        self.markers = set()
 
     def handle_starttag(self, tag, attrs):
         a = dict(attrs)
+        if tag in SKIP_TEXT:
+            self.skip[tag] = self.skip.get(tag, 0) + 1
+        if tag == "head":
+            self.in_head = True
+        if tag == "body":
+            self.in_head = False
+        self.note_markers(tag, a)
         if tag == "html":
             self.result["language"] = a.get("lang")
         if tag == "base" and "href" in a:
@@ -37,20 +57,49 @@ class Extractor(HTMLParser):
         if tag == "img":
             # Preserve missing alt as null and decorative alt as an empty string.
             self.result["images"].append({k: a.get(k) for k in ("src", "srcset", "alt", "width", "height", "loading", "fetchpriority", "data-src")})
+            if self.link is not None:
+                self.link_images.append(a.get("alt"))
         if tag == "a":
-            self.link, self.link_text = a, []
-        if tag in ("title", "h1", "h2", "h3", "h4", "h5", "h6") or (tag == "script" and a.get("type", "").lower().split(";")[0].strip() == "application/ld+json"):
+            self.link, self.link_text, self.link_images = a, [], []
+        # SVG <title> elements are accessibility labels, not the document title.
+        if (tag == "title" and not self.skip.get("svg")) or tag in ("h1", "h2", "h3", "h4", "h5", "h6") or (
+                tag == "script" and a.get("type", "").lower().split(";")[0].strip() == "application/ld+json"):
             self.capture, self.text = tag, []
+
+    def note_markers(self, tag, a):
+        if a.get("id") in SPA_ROOT_IDS:
+            self.markers.add('id="%s"' % a["id"])
+        for name in ("data-reactroot", "ng-version"):
+            if name in a:
+                self.markers.add(name)
+        if any(name.startswith("data-svelte-h") for name in a):
+            self.markers.add("data-svelte-h")
+        if tag in ("app-root", "astro-island"):
+            self.markers.add("<%s>" % tag)
 
     def handle_data(self, data):
         if self.capture:
             self.text.append(data)
         if self.link is not None:
             self.link_text.append(data)
+        if self.skip.get("noscript") and "javascript" in data.lower():
+            self.markers.add("noscript-javascript-notice")
+        if not self.in_head and not any(self.skip.values()):
+            self.visible.append(data)
 
     def handle_endtag(self, tag):
+        if tag in SKIP_TEXT and self.skip.get(tag):
+            self.skip[tag] -= 1
+        if tag == "head":
+            self.in_head = False
         if tag == "a" and self.link is not None:
-            self.result["links"].append({**self.link, "text": " ".join("".join(self.link_text).split())})
+            text = " ".join("".join(self.link_text).split())
+            alts = [alt for alt in self.link_images if alt and alt.strip()]
+            self.result["links"].append({**self.link, "text": text,
+                                         # Alt values of images inside the link (null = image has no alt).
+                                         "image_alts": list(self.link_images),
+                                         # Effective anchor text: link text, else the images' alt text.
+                                         "anchor_text": text or " ".join(" ".join(alt.split()) for alt in alts)})
             self.link = None
         if tag != self.capture:
             return
@@ -80,9 +129,19 @@ def extract(html, base_url=None):
             if link.get("href") is not None:
                 link["resolved_href"] = urljoin(base, link["href"])
         result["resolved_canonicals"] = [urljoin(base, c) if c is not None else None for c in result["canonicals"]]
+    # Chunks are joined with a space so adjacent blocks do not merge into one word.
+    visible = " ".join(" ".join(parser.visible).split())
+    result["visible_text"] = {"chars": len(visible), "words": len(visible.split()),
+                              "excludes": "head, script, style, noscript, template and SVG content"}
+    markers = sorted(parser.markers)
+    result["rendering_hint"] = {"shell_markers": markers, "visible_text_chars": len(visible),
+                                "possible_client_rendered": bool(markers) and len(visible) < SPA_TEXT_THRESHOLD,
+                                "threshold_chars": SPA_TEXT_THRESHOLD,
+                                "basis": "Heuristic cue from saved HTML only; confirm in a browser before concluding content depends on JavaScript."}
     result["limitations"] = ["Saved HTML only; no HTTP status, headers, robots rules, rendered DOM or linked destinations verified.",
                              "JSON-LD parsing establishes syntax only, not schema validity or rich-result eligibility.",
-                             "Standard-library HTML parser; malformed markup may differ from a browser DOM."]
+                             "Standard-library HTML parser; malformed markup may differ from a browser DOM.",
+                             "Visible text and rendering_hint are diagnostic cues from the original HTML, not rendered-DOM measurements or ranking thresholds."]
     return result
 
 

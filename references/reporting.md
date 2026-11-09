@@ -73,6 +73,8 @@ Each finding:
 | `owner_role`, `effort`, `dependencies` | Suggested role; `effort` object `{min, max, unit, includes, scope, assumptions, confidence}` for hands-on implementation plus validation; prerequisite finding IDs. Use null bounds and unit when unknown, with the reason in assumptions |
 | `waiting_time` | Object `{estimate, assumptions}` for known release/external waits, separate from hands-on work; estimate null when unknown or not applicable. Label any search-effect timing as uncertain |
 
+Allowed values (case-insensitive): `mode` as listed above; `severity` critical, high, medium, low or info; `confidence` (including inside `impact_estimate` and `effort`) high, medium or low; `evidence_status` observed, inferred or unverified; coverage `status` checked, partial, unknown or not-applicable; `impact_estimate.level` high, medium, low or unknown; `effort.unit` minutes, hours or working_days. An Info finding may omit the action fields (`recommendation`, `acceptance_test`, `impact_estimate`, `owner_role`, `effort`, `waiting_time`); every other finding needs all fields. Critical requires `observed` evidence; an unverified suspicion is never Critical. `urls` may list fewer URLs than `affected_count` (examples) but never more.
+
 Inventory columns: `url, final_url, discovered_via, template, fetch_status, http_status, rendered, observed_indexability, canonical, evidence_ref, notes`. Unknown HTTP/indexing values stay empty or explicitly unknown. Preserve duplicate discoveries in provenance without duplicating fetched-URL counts.
 
 ## Final verification
@@ -86,4 +88,4 @@ Inventory columns: `url, final_url, discovered_via, template, fetch_status, http
 - No unsupported uplift, penalty, authority, keyword-volume or AI-visibility claims.
 - Artifacts contain no secrets or unnecessary personal data.
 
-Validate JSON parsing and CSV readability with tools available in the environment. These format checks do not validate SEO conclusions; inspect supporting evidence for that.
+Run [validate_audit.py](../scripts/validate_audit.py) on the audit directory (usage in [scripts.md](scripts.md)). It covers JSON and CSV readability, the contract above, evidence links, finding-ID agreement across files and secret patterns. Resolve every error and address or explain each warning. These checks do not validate SEO conclusions, or whether report text agrees with the JSON beyond finding IDs; inspect supporting evidence and compare priorities, counts and estimates across the files yourself.
