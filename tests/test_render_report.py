@@ -180,5 +180,83 @@ class RenderReportTests(unittest.TestCase):
         self.assertIn("`evidence/a.html:3`", report)
 
 
+score_spec = importlib.util.spec_from_file_location("score_audit", Path(__file__).resolve().parents[1] / "scripts" / "score_audit.py")
+score_audit = importlib.util.module_from_spec(score_spec)
+score_spec.loader.exec_module(score_audit)
+from test_score_audit import analysis as analysis_doc, healthy_probe  # noqa: E402
+
+
+def write_score(folder, probe=None):
+    ctx = score_audit.Context(analysis_doc({"links.broken_internal": (3, 20), "status.server_error": (0, 40), "onpage.title_missing": (1, 40)}), probe or healthy_probe())
+    report = score_audit.build_report(score_audit.load_rubric(score_audit.RUBRIC), ctx, [])
+    (folder / "score.json").write_text(json.dumps(report))
+    return report
+
+
+class ScoreSectionTests(unittest.TestCase):
+    def render_with_score(self, probe=None, tamper=None):
+        with tempfile.TemporaryDirectory() as temporary:
+            folder = build(temporary)
+            (folder / "action-plan.md").unlink()
+            (folder / "report.md").unlink()
+            data = write_score(folder, probe)
+            if tamper:
+                tamper(data, folder)
+            narrative = folder.parent / "narrative.md"
+            narrative.write_text(NARRATIVE)
+            code, out, err = run_render(folder, "--narrative", str(narrative))
+            report = (folder / "report.md").read_text() if (folder / "report.md").exists() else None
+            issues, stats = validator.validate(folder) if report else ([], {})
+            return {"code": code, "err": err, "report": report, "issues": issues, "score": data}
+
+    def test_the_report_shows_the_number_with_coverage_label_and_what_to_fix(self):
+        result = self.render_with_score()
+        report, data = result["report"], result["score"]
+        self.assertEqual(result["code"], 0, result["err"])
+        self.assertIn("## Checklist score", report)
+        self.assertIn("**%s / 100.**" % data["overall"]["score"], report)
+        self.assertIn("%d%% of the checklist" % round(data["overall"]["coverage"] * 100), report)
+        self.assertIn("not a Google ranking predictor", report)
+        self.assertIn("| Indexing and access |", report)
+        self.assertIn("**Blockers:** none flagged.", report)
+        self.assertIn("**Fix first**", report)
+        self.assertIn("| Fix or remove links to pages that are missing. | +", report)
+        self.assertIn("3 of 20 pages", report)
+        self.assertIn("**Not checked**", report)
+        self.assertIn("**Not covered by this checklist:**", report)
+        self.assertIn("comparison key %s" % data["comparison_key"], report)
+        self.assertLess(report.index("## Executive assessment"), report.index("## Checklist score"))
+        self.assertLess(report.index("## Checklist score"), report.index("## Coverage"))
+
+    def test_the_rendered_report_passes_the_validator(self):
+        result = self.render_with_score()
+        self.assertEqual([i for i in result["issues"] if i["level"] == "error"], [])
+
+    def test_blockers_are_listed_beside_the_number(self):
+        probe = healthy_probe()
+        probe["fetch"]["status"] = 503
+        report = self.render_with_score(probe)["report"]
+        self.assertIn("- main-fetch-failed: The audited URL did not return a successful response.", report)
+
+    def test_a_tampered_score_is_refused(self):
+        def edit(data, folder):
+            data["overall"]["score"] = 99.0
+            (folder / "score.json").write_text(json.dumps(data))
+        result = self.render_with_score(tamper=edit)
+        self.assertEqual(result["code"], 1)
+        self.assertIn("SCORE_MISMATCH", result["err"])
+        self.assertIsNone(result["report"])
+
+    def test_no_score_file_means_no_score_section(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            folder = build(temporary)
+            (folder / "action-plan.md").unlink()
+            (folder / "report.md").unlink()
+            narrative = folder.parent / "narrative.md"
+            narrative.write_text(NARRATIVE)
+            self.assertEqual(run_render(folder, "--narrative", str(narrative))[0], 0)
+            self.assertNotIn("Checklist score", (folder / "report.md").read_text())
+
+
 if __name__ == "__main__":
     unittest.main()

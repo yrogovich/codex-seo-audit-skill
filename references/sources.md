@@ -1,30 +1,30 @@
-# Sources and design provenance
+# Sources and design notes
 
-Reviewed on 2026-11-09. Revisit current primary documentation during each audit; this file is a starting point, not a frozen statement of search policy.
+Reviewed on 2026-11-09. Check the current official docs during each audit. This file is a starting point, not a fixed statement of search policy.
 
 ## Design references
 
-- [AgriciDaniel/claude-seo](https://github.com/AgriciDaniel/claude-seo), particularly [full audit](https://github.com/AgriciDaniel/claude-seo/blob/main/skills/seo-audit/SKILL.md), [technical audit](https://github.com/AgriciDaniel/claude-seo/blob/main/skills/seo-technical/SKILL.md), and [hub](https://github.com/AgriciDaniel/claude-seo/blob/main/skills/seo/SKILL.md): useful breadth, template-aware analysis and persisted deliverables. Its runtime, delegation architecture, marketing footer, weighted scores and hardcoded policy claims are not adopted.
-- [affaan-m/ECC SEO skill](https://github.com/affaan-m/ECC/blob/main/skills/seo/SKILL.md): useful compact practical review and page-specific remediation. Fixed length targets and single-heading guidance are treated as contextual heuristics.
+- [AgriciDaniel/claude-seo](https://github.com/AgriciDaniel/claude-seo) ([full audit](https://github.com/AgriciDaniel/claude-seo/blob/main/skills/seo-audit/SKILL.md), [technical audit](https://github.com/AgriciDaniel/claude-seo/blob/main/skills/seo-technical/SKILL.md), [hub](https://github.com/AgriciDaniel/claude-seo/blob/main/skills/seo/SKILL.md)): we took the breadth, page-type thinking and saved deliverables. We did not take its runtime, sub-agent design, marketing footer, weighted scores or fixed policy claims.
+- [affaan-m/ECC SEO skill](https://github.com/affaan-m/ECC/blob/main/skills/seo/SKILL.md): a compact, practical review with page-specific fixes. We treat its fixed length targets and single-heading advice as hints, not rules.
 
-This is an independently written Codex audit workflow, not a copy or installation of either repository. No upstream scripts or assets are bundled. Its optional standard-library Python helpers cover PageSpeed collection and report import, saved HTML extraction, CrUX field data, a site probe, a bounded crawler with analysis, audit validation and report rendering. The PageSpeed and HTML helpers were inspired by claude-seo's [PageSpeed](https://github.com/AgriciDaniel/claude-seo/blob/main/scripts/pagespeed_check.py) and [HTML extraction](https://github.com/AgriciDaniel/claude-seo/blob/main/scripts/parse_html.py) workflows; the guarded-fetch design borrows the idea of a shared SSRF layer with an explicit local-target allowance from claude-seo's url_safety.py, written independently. No browser runtime is bundled: rendering uses whatever browser tool is available, and unmeasured areas are reported as unknown.
+This is an independent Codex workflow. It is not a copy of either project, and no upstream code or assets are included. The optional Python helpers use only the standard library. The PageSpeed and HTML helpers were inspired by claude-seo's [PageSpeed](https://github.com/AgriciDaniel/claude-seo/blob/main/scripts/pagespeed_check.py) and [HTML extraction](https://github.com/AgriciDaniel/claude-seo/blob/main/scripts/parse_html.py) scripts. The guarded-fetch layer borrows the idea of one shared SSRF guard with an explicit local-target allowance from claude-seo's url_safety.py, written independently. No browser runtime is included: use whatever browser tool you have, and report unmeasured areas as unknown.
 
-## Primary references by decision
+## Official references by topic
 
-- [Search Essentials](https://developers.google.com/search/docs/essentials): foundational eligibility and policies.
+- [Search Essentials](https://developers.google.com/search/docs/essentials): basic eligibility and policies.
 - [robots.txt introduction](https://developers.google.com/search/docs/crawling-indexing/robots/intro): crawling versus indexing controls.
 - [Canonical consolidation](https://developers.google.com/search/docs/crawling-indexing/consolidate-duplicate-urls): canonical signals and duplicate URLs.
 - [Sitemaps](https://developers.google.com/search/docs/crawling-indexing/sitemaps/overview): discovery and sitemap expectations.
 - [JavaScript SEO](https://developers.google.com/search/docs/crawling-indexing/javascript/javascript-seo-basics): rendering, content and link discovery.
-- [Title links](https://developers.google.com/search/docs/appearance/title-link): title guidance and search display behavior.
+- [Title links](https://developers.google.com/search/docs/appearance/title-link): title guidance and display.
 - [Structured-data policies](https://developers.google.com/search/docs/appearance/structured-data/sd-policies) and [supported features](https://developers.google.com/search/docs/appearance/structured-data/search-gallery): validity, eligibility and changing features.
-- [Schema.org validator](https://validator.schema.org/) and [Rich Results Test](https://search.google.com/test/rich-results): different validation purposes; use only when available.
-- [Web Vitals](https://web.dev/articles/vitals): current metrics, thresholds and field assessment.
-- [PageSpeed getting started](https://developers.google.com/speed/docs/insights/v5/get-started) and [request/response reference](https://developers.google.com/speed/docs/insights/v5/reference/pagespeedapi/runpagespeed): hosted lab analysis, device strategies, categories, optional API key and field-data limitations.
-- [Lighthouse CLI](https://github.com/GoogleChrome/lighthouse#using-the-node-cli) and [CrUX API](https://developer.chrome.com/docs/crux/api): local lab reports versus separately collected field measurements.
-- [Localized versions](https://developers.google.com/search/docs/specialty/international/localized-versions): hreflang behavior.
-- [Helpful content](https://developers.google.com/search/docs/fundamentals/creating-helpful-content) and [generative AI guidance](https://developers.google.com/search/docs/fundamentals/using-gen-ai-content): usefulness, trust and scaled-content concerns.
-- [AI features and websites](https://developers.google.com/search/docs/appearance/ai-features): search inclusion and lack of special AI markup requirements.
+- [Schema.org validator](https://validator.schema.org/) and [Rich Results Test](https://search.google.com/test/rich-results): they test different things.
+- [Web Vitals](https://web.dev/articles/vitals): metrics, thresholds and field assessment.
+- [PageSpeed getting started](https://developers.google.com/speed/docs/insights/v5/get-started) and [API reference](https://developers.google.com/speed/docs/insights/v5/reference/pagespeedapi/runpagespeed): hosted lab runs, the optional API key, field-data limits.
+- [Lighthouse CLI](https://github.com/GoogleChrome/lighthouse#using-the-node-cli) and [CrUX API](https://developer.chrome.com/docs/crux/api): local lab reports versus field data.
+- [Localized versions](https://developers.google.com/search/docs/specialty/international/localized-versions): how hreflang works.
+- [Helpful content](https://developers.google.com/search/docs/fundamentals/creating-helpful-content) and [generative AI guidance](https://developers.google.com/search/docs/fundamentals/using-gen-ai-content): usefulness, trust, scaled content.
+- [AI features and websites](https://developers.google.com/search/docs/appearance/ai-features): how search inclusion works, and that no special AI markup is required.
 - [Google Search status](https://status.search.google.com/): confirmed incidents and ranking updates.
 
-For other search engines and AI crawlers, find the vendor's current official crawler/control documentation for the specific product. Do not infer search behavior from a training-bot name or an old third-party list.
+For other search engines and AI crawlers, find the vendor's current official documentation for that exact product. Do not guess search behavior from a training-bot name or an old third-party list.

@@ -115,7 +115,7 @@ def load_json(path, issues):
     try:
         return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
-        issues.error("JSON_UNREADABLE", path.name, f"Cannot parse findings.json: {type(exc).__name__}: {str(exc)[:120]}")
+        issues.error("JSON_UNREADABLE", path.name, f"Cannot parse {path.name}: {type(exc).__name__}: {str(exc)[:120]}")
         return None
 
 
@@ -515,6 +515,46 @@ def scan_artifacts(audit_dir, issues, stats):
     stats["files_scanned"] = scanned
 
 
+SCORE_STATUSES = {"measured", "not-measured", "not-applicable"}
+SCORE_LABEL = "not a google ranking predictor"
+
+
+def check_score(data, issues, where="score.json"):
+    """Check that score.json adds up and keeps its label. Returns (score, coverage) or None."""
+    if not isinstance(data, dict) or not isinstance(data.get("checks"), list) or not data["checks"] or not isinstance(data.get("overall"), dict):
+        issues.error("SCORE_INVALID", where, "score.json needs an overall object and a non-empty checks array.")
+        return None
+    if SCORE_LABEL not in str(data.get("label", "")).lower():
+        issues.error("SCORE_LABEL", where, "The label must say the score is not a Google ranking predictor.")
+    rubric = data.get("rubric")
+    if not isinstance(rubric, dict) or not is_int(rubric.get("version")) or not has_text(rubric.get("sha256")):
+        issues.error("SCORE_RUBRIC", where, "rubric.version and rubric.sha256 are required so the score can be reproduced.")
+    done = pending = weighted = 0
+    for i, check in enumerate(data["checks"]):
+        here = f"{where}.checks[{i}]"
+        if not (isinstance(check, dict) and has_text(check.get("id")) and is_int(check.get("weight")) and check.get("status") in SCORE_STATUSES):
+            issues.error("SCORE_CHECK", here, "Each check needs id, integer weight and status measured, not-measured or not-applicable.")
+        elif check["status"] == "measured":
+            if is_num(check.get("score")) and 0 <= check["score"] <= 1:
+                done, weighted = done + check["weight"], weighted + check["weight"] * check["score"]
+            else:
+                issues.error("SCORE_CHECK", here, "A measured check needs a score between 0 and 1.")
+        else:
+            if check.get("score") is not None:
+                issues.error("SCORE_CHECK", here, "Only measured checks may have a score.")
+            pending += check["weight"] if check["status"] == "not-measured" else 0
+    overall = data["overall"]
+    score = round(100 * weighted / done, 1) if done else None
+    coverage = round(done / (done + pending), 4) if done + pending else None
+    for key, expected, tolerance in (("score", score, 0.051), ("coverage", coverage, 0.00011)):
+        actual = overall.get(key)
+        if (actual is None) != (expected is None) or (actual is not None and (not is_num(actual) or abs(actual - expected) > tolerance)):
+            issues.error("SCORE_MISMATCH", where, f"overall.{key} is {shown(actual)} but the checks add up to {shown(expected)}.")
+    if is_num(overall.get("score")) and not 0 <= overall["score"] <= 100:
+        issues.error("SCORE_RANGE", where, "overall.score must be between 0 and 100.")
+    return score, coverage
+
+
 def audit_roots(audit_dir, extra_root=None):
     """Directories evidence references resolve against: the audit folder, then the workspace above seo-audits/."""
     audit_dir = audit_dir.resolve()
@@ -581,6 +621,13 @@ def validate(audit_dir, extra_root=None):
             if absent:
                 issues.warn("FINDING_URL_NOT_IN_INVENTORY", f"findings[{i}].urls", f"{len(absent)} URL(s) are not in url-inventory.csv, for example {shown(absent[0])}.")
     check_markdown(audit_dir, findings, issues)
+    if (audit_dir / "score.json").is_file():
+        result = check_score(load_json(audit_dir / "score.json", issues), issues)
+        if result and result[0] is not None and (audit_dir / "report.md").is_file():
+            report = (audit_dir / "report.md").read_text(encoding="utf-8", errors="replace")
+            if SCORE_LABEL not in report.lower() or "%d%%" % round(result[1] * 100) not in report:
+                issues.error("SCORE_NOT_IN_REPORT", "report.md", "score.json exists, so report.md must show the checked percentage and say the score is not a Google ranking predictor (render_report.py does this).")
+        stats["score"] = result[0] if result else None
     if mode == "local-project":
         checklist = audit_dir / "launch-checklist.md"
         if not checklist.is_file():

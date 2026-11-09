@@ -67,10 +67,10 @@ class Analysis:
         """Record a check; empty results are kept in checks_run so 'none found' is distinguishable from 'not run'."""
         urls = list(dict.fromkeys(urls))
         total = len(urls) if count is None else count
-        self.checks_run.append({"check": name, "count": total})
+        denominator = len(self.pages) if denominator is None else denominator
+        self.checks_run.append({"check": name, "count": total, "denominator": denominator, "unit": unit})
         if not total:
             return
-        denominator = len(self.pages) if denominator is None else denominator
         self.candidates.append({
             "check": name, "area": area, "title": title, "count": total, "denominator": denominator,
             "basis": "%d of %d %s; crawl %s" % (total, denominator, unit, self.crawl_label),
@@ -98,12 +98,13 @@ class Analysis:
                        "fetched URLs", len(self.status))
         failed = [u for u, r in self.rows.items() if r["fetch_status"].startswith("failed:")]
         self.check("status.fetch_failed", "technical/indexing", "URLs that could not be fetched (network or TLS failure)", failed,
-                   [{"url": u, "reason": self.rows[u]["fetch_status"]} for u in failed], "discovered URLs", len(self.rows))
+                   [{"url": u, "reason": self.rows[u]["fetch_status"]} for u in failed], "fetched URLs", self.summary["counts"]["fetched_rows"])
         noindex = [u for u in self.pages if self.pages[u]["noindex_meta"] or self.pages[u]["noindex_header"]]
         self.check("index.noindex", "technical/indexing", "Pages with a noindex directive (meta or X-Robots-Tag)", noindex,
                    [{"url": u, "meta": self.pages[u]["noindex_meta"], "header": self.pages[u]["noindex_header"], "in_sitemap": u in self.sitemap,
                      "inlinks": len(self.inlinks.get(u, ()))} for u in noindex], note="Confirm intent before calling these defects; staging and utility pages are often intentionally noindex.")
-        self.check("index.noindex_in_sitemap", "technical/indexing", "Sitemap URLs that carry a noindex directive", [u for u in noindex if u in self.sitemap])
+        self.check("index.noindex_in_sitemap", "technical/indexing", "Sitemap URLs that carry a noindex directive", [u for u in noindex if u in self.sitemap],
+                   None, "sitemap URLs", len(self.sitemap))
         blocked = [u for u, r in self.rows.items() if r["fetch_status"] == "blocked-by-robots"]
         self.check("index.blocked_by_robots", "technical/indexing", "Discovered URLs disallowed by robots.txt", blocked,
                    [{"url": u, "rule": self.rows[u]["notes"], "inlinks": len(self.inlinks.get(u, ())), "in_sitemap": u in self.sitemap} for u in blocked],
@@ -118,7 +119,8 @@ class Analysis:
                     bad.append({"url": u, "canonical": target, "target": state})
         self.check("index.canonical_elsewhere", "technical/indexing", "Pages whose canonical points to a different URL", [d["url"] for d in elsewhere], elsewhere,
                    note="Often intentional (parameters, variants). Canonicals are signals, not directives.")
-        self.check("index.canonical_bad_target", "technical/indexing", "Canonical targets that redirect, error, are noindex or canonicalize elsewhere", [d["url"] for d in bad], bad)
+        self.check("index.canonical_bad_target", "technical/indexing", "Canonical targets that redirect, error, are noindex or canonicalize elsewhere", [d["url"] for d in bad], bad,
+                   "pages whose canonical points elsewhere", len(elsewhere))
         multiple = [u for u, p in self.pages.items() if len(set(p["canonicals"])) > 1 or len(p["canonicals"]) > 1
                     or (p["canonicals"] and p["canonical_header"] and p["canonicals"][0] != p["canonical_header"])]
         self.check("index.canonical_multiple", "technical/indexing", "Pages with more than one or conflicting canonical declarations", multiple)
@@ -195,9 +197,11 @@ class Analysis:
         self.check("links.http_scheme_internal", "architecture/links", "Internal links using http:// on an https site",
                    [s for sources in insecure.values() for s in sorted(sources)],
                    [{"target": t, "linking_pages": len(s), "example_referrers": sorted(s)[:3]} for t, s in insecure.items()], "fetched HTML pages", len(self.pages))
+        with_links = sum(1 for p in self.pages.values() if p["link_total"])
         empty = {u: p["link_empty_anchor"] for u, p in self.pages.items() if p["link_empty_anchor"]}
         self.check("links.empty_anchor", "architecture/links", "Pages with links that have no anchor text, image alt or aria-label", list(empty),
-                   [{"url": u, "links": n} for u, n in empty.items()], note="Link text with no accessible name gives crawlers and users no context.")
+                   [{"url": u, "links": n} for u, n in empty.items()], "fetched HTML pages with links", with_links,
+                   "Link text with no accessible name gives crawlers and users no context.")
         generic = defaultdict(set)
         for link in internal:
             if norm(link["anchor_text"]) in GENERIC_ANCHORS:
@@ -205,7 +209,7 @@ class Analysis:
         self.check("links.generic_anchor", "architecture/links", "Internal links with generic anchor text",
                    [s for sources in generic.values() for s in sorted(sources)],
                    [{"anchor": a, "pages": len(s), "example_pages": sorted(s)[:3]} for a, s in sorted(generic.items(), key=lambda i: -len(i[1]))],
-                   "fetched HTML pages", len(self.pages), "Judge in context: a generic label next to descriptive text may be fine.")
+                   "fetched HTML pages with links", with_links, "Judge in context: a generic label next to descriptive text may be fine.")
         orphans = [u for u in sorted(self.sitemap) if u != self.start and not self.inlinks.get(u) and u in self.rows]
         self.check("links.orphan_candidates", "architecture/links", "Sitemap URLs with no internal link found in this crawl", orphans,
                    [{"url": u, "fetched": self.rows[u]["fetch_status"] == "fetched"} for u in orphans], "sitemap URLs", len(self.sitemap),
@@ -253,6 +257,7 @@ class Analysis:
                                  ("images.missing_dimensions", "missing_dimensions", "Pages with images missing width or height attributes")):
             hits = {u: p["images"][key] for u, p in pages.items() if p["images"][key]}
             self.check(name, "images/media", title, list(hits), [{"url": u, "images": n, "of": pages[u]["images"]["total"]} for u, n in hits.items()],
+                       unit="fetched HTML pages with images", denominator=sum(1 for p in pages.values() if p["images"]["total"]),
                        note="Missing alt means no attribute; alt=\"\" (decorative) is not counted. Width/height may be set in CSS." if key == "missing_dimensions" else
                        "Missing alt means no attribute; alt=\"\" (decorative) is not counted.")
         for name, key, title in (("structured.json_ld_syntax_error", "syntax_errors", "Pages with JSON-LD that does not parse"),
@@ -260,6 +265,7 @@ class Analysis:
                                  ("structured.json_ld_placeholder", "placeholder_blocks", "Pages whose JSON-LD contains placeholder-looking values")):
             hits = {u: p["json_ld"][key] for u, p in pages.items() if p["json_ld"][key]}
             self.check(name, "structured data", title, list(hits), [{"url": u, "blocks": n} for u, n in hits.items()],
+                       unit="fetched HTML pages with JSON-LD", denominator=sum(1 for p in pages.values() if p["json_ld"]["blocks"]),
                        note="Syntax and placeholders only; schema validity and rich-result eligibility need a validator.")
 
     def hreflang(self):

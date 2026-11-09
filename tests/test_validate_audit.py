@@ -293,5 +293,65 @@ class ValidateAuditTests(unittest.TestCase):
             self.assertEqual(stop.exception.code, 2)
 
 
+def score_doc():
+    checks = [{"id": "a", "weight": 4, "status": "measured", "score": 1.0}, {"id": "b", "weight": 4, "status": "measured", "score": 0.5},
+              {"id": "c", "weight": 2, "status": "not-measured", "score": None}, {"id": "d", "weight": 3, "status": "not-applicable", "score": None}]
+    return {"label": "Internal checklist metric, not a Google ranking predictor.", "rubric": {"version": 1, "sha256": "abc"},
+            "overall": {"score": 75.0, "coverage": 0.8}, "checks": checks}
+
+
+SCORE_REPORT = "SEO-001\n\n**75.0 / 100.** We could check 80% of the checklist. Internal checklist metric, not a Google ranking predictor.\n"
+
+
+class ScoreFileTests(unittest.TestCase):
+    def check(self, change=None, expected=None, report=SCORE_REPORT):
+        with tempfile.TemporaryDirectory() as temporary:
+            folder = build(temporary)
+            data = score_doc()
+            if change:
+                change(data)
+            (folder / "score.json").write_text(json.dumps(data))
+            (folder / "report.md").write_text(report)
+            found, issues, stats = run(folder)
+            if expected is None:
+                self.assertEqual(issues, [])
+                self.assertEqual(stats["score"], 75.0)
+            else:
+                self.assertIn(("error", expected), found, issues)
+
+    def test_a_consistent_score_with_its_coverage_in_the_report_passes(self):
+        self.check()
+
+    def test_numbers_must_add_up(self):
+        self.check(lambda d: d["overall"].update(score=90.0), "SCORE_MISMATCH")
+        self.check(lambda d: d["overall"].update(coverage=1.0), "SCORE_MISMATCH")  # unmeasured weight cannot be hidden
+        self.check(lambda d: d["checks"][0].update(score=0.0), "SCORE_MISMATCH")
+
+    def test_label_rubric_and_check_shape(self):
+        self.check(lambda d: d.update(label="SEO health"), "SCORE_LABEL")
+        self.check(lambda d: d.pop("rubric"), "SCORE_RUBRIC")
+        self.check(lambda d: d["checks"][0].update(score=None), "SCORE_CHECK")
+        self.check(lambda d: d["checks"][2].update(score=0.5), "SCORE_CHECK")
+        self.check(lambda d: d["checks"][1].update(status="skipped"), "SCORE_CHECK")
+        self.check(lambda d: d.update(checks=[]), "SCORE_INVALID")
+
+    def test_the_report_must_show_coverage_and_the_label(self):
+        self.check(None, "SCORE_NOT_IN_REPORT", report="SEO-001\n\n75 / 100\n")
+        self.check(None, "SCORE_NOT_IN_REPORT", report=SCORE_REPORT.replace("80%", "100%"))
+
+    def test_a_missing_score_is_fine_and_a_null_score_needs_no_percentage(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            self.assertEqual(run(build(temporary))[1], [])
+        def nothing(d):
+            d["checks"] = [{"id": "c", "weight": 2, "status": "not-measured", "score": None}]
+            d["overall"].update(score=None, coverage=0.0)
+        with tempfile.TemporaryDirectory() as temporary:
+            folder = build(temporary)
+            data = score_doc()
+            nothing(data)
+            (folder / "score.json").write_text(json.dumps(data))
+            self.assertEqual(run(folder)[1], [])
+
+
 if __name__ == "__main__":
     unittest.main()

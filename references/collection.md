@@ -1,45 +1,43 @@
 # Collection and coverage
 
-For local pre-deployment work, apply [local-project.md](local-project.md) first; it defines local origin mapping, intentional robots exclusions, and production-preview handling.
+For a local project, read [local-project.md](local-project.md) first.
 
-## Choose a practical inspection mode
+## Pick a method for the tools you have
 
-| Available evidence | Method | Limits to disclose |
+| What you have | What to do | Say this about the limits |
 | --- | --- | --- |
-| Browser + HTTP fetch/crawler | Save responses and inspect rendered templates, mobile and desktop | Browser rendering is not proof of Google's rendering/indexing |
-| HTTP fetch/crawler only | Inspect response headers and original HTML | Rendered content, interactions, and visual behavior unknown |
-| Browser only | Inspect visible content and DOM; collect response details only where supported | DOM may differ from original HTML; don't invent headers/status |
-| Crawl export or saved HTML | Analyze supplied dataset and its timestamps | No claim of current live behavior |
-| Repository only | Trace metadata, routes, SSR, CMS content flow, redirects, robots and sitemap generation | Deployment, server responses and live CMS values unverified |
+| Browser and HTTP fetch or crawler | Save responses. Inspect rendered pages on mobile and desktop | A browser render is not proof of how Google renders or indexes |
+| HTTP fetch or crawler only | Inspect headers and original HTML | Rendered content and interactions are unknown |
+| Browser only | Inspect visible content and the DOM. Get response details only if the tool supports it | The DOM can differ from the original HTML. Do not invent headers or status codes |
+| Crawl export or saved HTML | Analyze the data, with its timestamps | Nothing about the live site now |
+| Repository only | Trace metadata, routes, rendering, CMS flow, redirects, robots and sitemap generation | Deployment, server responses and live CMS content are unverified |
 
-Search-result snippets and extracted web text are discovery aids, not raw HTML evidence. A tool omitting the `<head>` does not establish missing metadata. If a site requires JavaScript, inspect it in a browser before concluding it is empty. Save screenshots when they substantiate a visual finding; screenshots alone cannot prove canonical or HTTP behavior.
+Search snippets and extracted text help you find pages, but they are not raw HTML evidence. A tool that drops the `<head>` does not prove metadata is missing. If a site needs JavaScript, look at it in a browser before saying it is empty. A screenshot can back up a visual finding. It cannot prove canonical or HTTP behavior.
 
-## Discovery and crawl limits
+## Crawl limits
 
-- Record starting URL, final host, protocols, allowed hosts/subdomains, requested scope, time, user agent, viewport/device, tool/version, and budget. Do not silently expand to sibling domains.
-- Retrieve `/robots.txt`; inspect applicable agent groups and declared sitemaps. Follow sitemap indexes with a visited set and bounded recursion; validate actual XML instead of accepting an HTML error page as a sitemap. Try conventional sitemap locations only when discovery fails.
-- Discover URLs from navigation, sitemaps, internal links, and authorized exports. Preserve discovery sources so a sitemap URL is not mistaken for an internally linked page.
-- For an unspecified full audit, use an initial budget of 100 HTML pages, one request per second per host, at most two concurrent requests, a 30-second per-request timeout, and at most five redirect hops. Adapt down to server limits. Count redirects and auxiliary requests in request totals. These are operational defaults, not SEO standards.
-- Inspect robots before bulk crawling and honor exclusions. Stop the affected branch if robots cannot be reliably retrieved or parsed; record the limitation. Missing robots is not by itself an SEO defect. For 429, honor Retry-After and retry at most twice; reduce concurrency. Stop on repeated 5xx, access challenges, or persistent denial; retain partial results.
-- Set finite URL, response-size, sitemap, and elapsed-time budgets in the chosen crawler; report which cap stopped it. Never expand faceted/query/calendar spaces without bounds. Keep meaningful query parameters; do not normalize distinct content into one page. Strip fragments for HTTP fetch deduplication but preserve original links as evidence.
-- Use only ordinary read-only public resources in the target scope. Skip logout, cart mutations, forms, and other action URLs. Do not bypass authentication or bot challenges. Validate redirect destinations and do not follow public targets into private/local network addresses. Local or authenticated staging is inspected only when explicitly in scope.
+- Record the start URL, final host, protocols, allowed hosts, scope, time, user agent, device, tool and version, and budget. Do not drift to sibling domains.
+- Fetch `/robots.txt` and read the groups for the relevant crawlers and the declared sitemaps. Follow sitemap indexes with a visited set and a depth limit. Check that a "sitemap" is real XML, not an HTML error page. Try the usual sitemap locations only if none is declared.
+- Find URLs from navigation, sitemaps, internal links and allowed exports. Record how each was found, so a sitemap URL is not mistaken for a linked page.
+- Default budget for a full audit: 100 HTML pages, one request per second per host, at most two at a time, 30 seconds per request, at most five redirect hops. Go lower if the server struggles. Count redirects and side requests. These are working defaults, not SEO standards.
+- Obey robots.txt. If you cannot read it, stop that part and note it. A missing robots.txt is not a defect. On a 429, wait for `Retry-After` and retry at most twice. Stop on repeated 5xx, bot challenges or steady refusals, and keep what you have.
+- Set hard limits for URLs, response size, sitemap size and time, and report which one stopped the crawl. Do not expand filter, query or calendar URLs without a limit. Keep query parameters that change content. Strip `#fragments` when fetching, but keep the original links as evidence.
+- Use only normal, read-only, public pages in scope. Skip logout, cart changes, forms and other action URLs. Do not bypass logins or bot checks. Check redirect targets, and never follow a public URL to a private or local address. Inspect staging or logged-in areas only if explicitly in scope.
 
-## Bundled collectors
+If Python 3.9+ and network access are available, prefer the bundled scripts ([scripts.md](scripts.md)): [probe.py](../scripts/probe.py) for redirects, headers, robots.txt, sitemaps and variants; [crawl.py](../scripts/crawl.py) for the bounded crawl (it enforces these limits and writes the inventory); [analyze_crawl.py](../scripts/analyze_crawl.py) for candidate issues. Their output is evidence and leads. An area you did not fetch or render is still unknown. Without the scripts, use the same limits with the tools you have.
 
-When Python 3.9+ and network access are available, prefer the bundled collectors over ad hoc fetching: [probe.py](../scripts/probe.py) for redirects, headers, robots.txt, sitemaps, host variants and missing-page behavior, and [crawl.py](../scripts/crawl.py) for the bounded crawl, which enforces the budgets above in code and writes the inventory. [analyze_crawl.py](../scripts/analyze_crawl.py) then lists candidate issues. See [scripts.md](scripts.md). Their output is evidence and leads; the judgment rules in this skill still apply, including that an unfetched or unrendered area is unknown. Without the scripts, apply the same budgets and checks with whatever tools exist.
+## Choose representative pages
 
-## Select representative pages
+List page types and languages before you spend the budget. Include the homepage; key service, category and product pages; content lists and detail pages; contact, about and trust pages; conversion entry points; and, when relevant, pagination, filters, translations and slow pages. Render at least one page per important type, plus odd ones. On a small site, inspect every eligible page you find within budget.
 
-Inventory templates and languages before spending the budget. Include the homepage, key service/category/product pages, content listings and detail pages, contact/about/trust pages, and important conversion entry points. Include pagination, filtered variants, translations, and poor-performing URLs when relevant. Render at least one representative per important template, plus anomalies. For small sites inspect every discovered eligible page within the budget.
+Write down why you sampled what you did. Check several examples before calling a pattern template-wide. On a large site, say "sampled full-scope audit: N fetched out of M discovered". Discovered is not the same as existing. In a partial crawl, link depth is an upper bound, and a page with no inlinks is not proven an orphan.
 
-Record the sampling rationale. Expand suspicious patterns to several instances before describing them as template-wide. On a large site, state “sampled full-scope audit: N fetched out of M discovered” with the known denominator. Discovered does not mean total existing. Sampled graph distances are upper bounds on shortest crawl depth; absent inlinks in a partial crawl do not prove an orphan.
+## Evidence to keep
 
-## Evidence to preserve
+For saved HTML, [parse_html.py](../scripts/parse_html.py) extracts metadata, headings, links, images and JSON-LD without fetching or running anything. Keep the original response and headers separately.
 
-For saved original HTML, [parse_html.py](../scripts/parse_html.py) extracts metadata, headings, links, image attributes and JSON-LD without fetching or executing anything. See [scripts.md](scripts.md) for usage and limitations. Preserve the original response and its headers separately.
+For each URL, record what you can: requested and final URL, how it was found, page type, fetch time, method, status and redirects, content type, robots rules, `X-Robots-Tag`, canonical, language and hreflang, title, description, headings, internal links, image attributes, structured data, and a pointer to the evidence. Use null or "unknown" for what you could not get.
 
-For each URL: requested/final URL, discovery source, template, fetch time, method, status and redirect chain if available, content type, robots rules, X-Robots-Tag, canonical, language/hreflang, title, description, headings, internal links, relevant image attributes, structured data, and an evidence reference. Use null/unknown for unavailable fields.
+For rendering comparisons, compare the original and rendered title, canonical, robots, content and links. Note consent or login state, the mobile viewport, and console errors that explain missing content. Content that only appears in a browser is a rendering dependency, not automatically an indexing failure.
 
-For rendering comparisons: original vs rendered title, canonical, robots, main content and links; consent/auth state; mobile viewport; console/resource errors relevant to missing content; screenshot or DOM excerpt where useful. Browser-only content is a rendering dependency, not automatically an indexing failure.
-
-Keep narrowly relevant response/DOM excerpts and source URLs. Remove tokens, cookies, personal analytics data, and secrets from saved artifacts. Preserve timestamps and dataset periods. Do not fabricate files for unavailable evidence.
+Keep short, relevant excerpts with source URLs and timestamps. Remove tokens, cookies, personal analytics data and secrets from saved files. Never create files for evidence you could not collect.

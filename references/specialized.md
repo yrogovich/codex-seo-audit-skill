@@ -1,29 +1,39 @@
 # Conditional checks
 
-Apply only relevant branches. Mark others not applicable with a reason. Mixed businesses can require several branches.
+Use only the sections that apply. Mark the others "not applicable" with a reason. A mixed business may need several.
 
 ## Ecommerce
 
-Sample categories, products, variants, pagination, filters and discontinued/out-of-stock states. Inspect crawlable product discovery, distinctive category usefulness, variant URL/canonical strategy, inventory response behavior and internal links. Compare product/offer markup with visible price, currency, availability and review evidence. Check feed/landing-page consistency only when a feed is available. Do not recommend deleting temporarily unavailable products by default. Separate shopping-feature eligibility from standard organic eligibility.
+- Sample categories, products, variants, pagination, filters, and discontinued or out-of-stock items.
+- Check that products are found through crawlable links, category pages are useful and distinct, variant URLs and canonicals make sense, and out-of-stock pages respond sensibly.
+- Compare product and offer markup with the visible price, currency, availability and reviews.
+- Check feed and landing-page consistency only if you have the feed.
+- Do not recommend deleting temporarily unavailable products by default.
+- Keep shopping-feature eligibility apart from normal organic eligibility.
 
 ## Local services and locations
 
-Verify public business identity, name/address/phone consistency, real service coverage, unique location information, contact access and legitimate reviews. Inspect public business profiles where available; management-only attributes remain unverified without access. Check relevant LocalBusiness entities against real details. Distinguish storefront, service-area and hybrid businesses. Location queries require a stated search location; a single search is not a map-rank survey. Avoid fabricated addresses, review solicitation schemes, and near-identical doorway pages.
+- Verify the public business identity, name/address/phone consistency, real service area, unique location content and genuine reviews.
+- Use public business profiles where possible. Owner-only settings stay unverified without access.
+- Check LocalBusiness markup against real details. Tell storefront, service-area and hybrid businesses apart.
+- A location search needs a stated location, and one search is not a map ranking survey.
+- Avoid made-up addresses, review-gathering schemes and near-identical doorway pages.
 
 ## International and multilingual
 
-Inventory language/region URLs and content. Validate hreflang language/region codes, absolute destinations, reciprocal/self references and canonical compatibility across HTML, headers or sitemaps. x-default is optional and context-dependent. Check translated content and metadata, locale navigation, redirects, index eligibility and relevant currency/units. Do not canonicalize valid translations to one language by default. Assess real missing reciprocity only after checking the target pages, not from one page's tags.
+- List the language and region URLs and their content.
+- Check hreflang: valid codes, absolute URLs, pages that link to each other and to themselves, and compatibility with canonicals. `x-default` is optional.
+- Check translated content and metadata, language navigation, redirects, index eligibility, currency and units.
+- Do not canonicalize valid translations to one language by default.
+- Call a return link missing only after checking the target page, not from one page's tags.
 
 ## Publishers, SaaS and service businesses
 
-Publishers: article/category/author discovery, original reporting or experience, attribution, date integrity, syndication/canonical handling and archive usefulness.
+- **Publishers:** how articles, categories and authors are found; original reporting; attribution; honest dates; syndication and canonicals; useful archives.
+- **SaaS:** tell product, feature, integration, comparison, pricing, help and docs pages apart. Check that useful docs are public and product claims have evidence. Login-only content is not automatically a defect.
+- **Service and agency sites:** relevant services and industries, solid case studies, location claims, clear expertise, ways to get in touch. A visual portfolio is not "missing content" until you have checked its rendered text and links.
 
-SaaS: intent distinction among product, feature, integration, comparison, pricing, help and documentation pages; public discovery of useful documentation; clear product claims and evidence. Login-only content is not automatically an SEO defect.
+## Migrations and generated pages
 
-Service/agency sites: relevant service and industry intent, substantive case-study evidence, geographic claims, clear expertise and lead pathways. Do not equate a visually rich portfolio with missing content without inspecting its rendered text and links.
-
-## Migrations and programmatic sites
-
-If migration is in scope, reconcile supplied old/new inventories, redirect mappings, canonical and hreflang updates, staging exclusions, internal links and sitemap changes. Verify production separately from repository intent. Do not remove staging noindex simply because it prevents indexing.
-
-For generated landing pages, group templates and sample both typical and edge cases. Evaluate distinct utility, data completeness and duplication. Escalate scope for apparent indexing explosions with bounded URL patterns; do not crawl infinite combinations. Recommend staged changes with measurable validation rather than universal word-count or page-count gates.
+- **Migration:** reconcile old and new URL lists, redirect maps, canonical and hreflang updates, staging exclusions, internal links and sitemaps. Verify production separately from what the repo intends. Do not remove a staging noindex just because it blocks indexing.
+- **Generated landing pages:** group by template and sample typical and edge cases. Judge distinct usefulness, data completeness and duplication. If indexing looks like it is exploding, widen scope with bounded URL patterns, and never crawl endless combinations. Suggest staged changes with a measurable check, not fixed word-count or page-count rules.

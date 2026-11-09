@@ -123,8 +123,45 @@ def render_finding(f):
     return lines
 
 
-def render_report(data, narrative):
-    lines = [narrative.strip(), "", "## Coverage", "", "| Area | Status | Checked / discovered | Denominator and limitation | Evidence |", "| --- | --- | --- | --- | --- |"]
+def action_where(action):
+    if action.get("affected") is not None and action.get("total"):
+        return "%s of %s %s" % (action["affected"], action["total"], action.get("unit") or "items")
+    return "see score.json"
+
+
+def render_score(score):
+    """Short, structured score section: number, coverage, area table, blockers, what to fix first."""
+    overall = score["overall"]
+    lines = ["## Checklist score", ""]
+    if overall["score"] is None:
+        return lines + ["No score was computed: no check could be measured from the evidence supplied.", ""]
+    lines += ["**%s / 100.** We could check %d%% of the checklist (%d of %d checks). %s" % (
+        overall["score"], round(overall["coverage"] * 100), overall["checks_measured"], overall["checks_applicable"], score["label"]), ""]
+    crawl = score.get("crawl")
+    if crawl and not crawl["complete"]:
+        lines += ["Note: %s." % crawl["note"], ""]
+    lines += ["| Area | Score | Checks measured |", "| --- | --- | --- |"]
+    for a in score.get("areas", []):
+        lines.append("| %s | %s | %d of %d |" % (cell(a["label"]), "not checked" if a["score"] is None else a["score"], a["checks_measured"], a["checks_applicable"]))
+    blockers = score.get("blockers") or []
+    lines += ["", "**Blockers:** " + ("none flagged." if not blockers else "")]
+    lines += ["- %s: %s" % (b["id"], b["description"]) for b in blockers]
+    if score.get("actions"):
+        lines += ["", "**Fix first** (points the score would gain if the check fully passed):", "", "| Fix | Points | Where | Check |", "| --- | --- | --- | --- |"]
+        lines += ["| %s | +%s | %s | %s |" % (cell(a["fix"]), a["points_to_gain"], cell(action_where(a)), a["id"]) for a in score["actions"]]
+    unchecked = [(k.split(": ", 1)[1], len(v)) for k, v in (score.get("not_measured_groups") or {}).items() if k.startswith("not-measured:")]
+    if unchecked:
+        lines += ["", "**Not checked** (left out of the score, not counted as passes):"]
+        lines += ["- %d checks: %s" % (n, reason) for reason, n in sorted(unchecked, key=lambda i: -i[1])[:5]]
+    if score.get("not_covered"):
+        lines += ["", "**Not covered by this checklist:** " + "; ".join(score["not_covered"]) + "."]
+    lines += ["", "Compare this score only with scores that used the same rubric version and the same checks (comparison key %s)." % score.get("comparison_key", "n/a"), ""]
+    return lines
+
+
+def render_report(data, narrative, score=None):
+    lines = [narrative.strip(), ""] + (render_score(score) if score else [])
+    lines += ["## Coverage", "", "| Area | Status | Checked / discovered | Denominator and limitation | Evidence |", "| --- | --- | --- | --- | --- |"]
     for c in data["coverage"]:
         counts = "%s / %s" % ("?" if c["checked_count"] is None else c["checked_count"], "?" if c["discovered_count"] is None else c["discovered_count"])
         note = " ".join(x for x in (c.get("denominator_note"), c.get("limitation")) if x)
@@ -181,6 +218,21 @@ def main():
     if errors:
         print("Not rendered: fix findings.json first (python3 scripts/validate_audit.py shows all checks).", file=sys.stderr)
         return 1
+    score = None
+    if (args.audit_dir / "score.json").is_file():  # a score in the audit folder is always shown, with its coverage
+        try:
+            score = json.loads((args.audit_dir / "score.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            print("Error: score.json is not valid JSON.", file=sys.stderr)
+            return 1
+        score_issues = contract.Issues()
+        contract.check_score(score, score_issues)
+        bad = [i for i in score_issues.items if i["level"] == "error"]
+        for item in bad:
+            print("ERROR %s: %s [%s]" % (item["where"], item["message"], item["code"]), file=sys.stderr)
+        if bad:
+            print("Not rendered: fix or regenerate score.json first.", file=sys.stderr)
+            return 1
     try:
         narrative = args.narrative.read_text(encoding="utf-8") if args.narrative else None
         plan_path, report_path = args.audit_dir / "action-plan.md", args.audit_dir / "report.md"
@@ -191,7 +243,7 @@ def main():
         write_new(plan_path, render_plan(data), True)
         print(plan_path)
         if narrative is not None:
-            write_new(report_path, render_report(data, narrative), True)
+            write_new(report_path, render_report(data, narrative, score), True)
             print(report_path)
             if not re.search(r"(?m)^##\s", narrative):
                 print("Note: the narrative has no '## ' headings; report.md needs Executive assessment and Scope and method sections.", file=sys.stderr)
