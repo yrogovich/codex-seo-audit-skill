@@ -212,6 +212,7 @@ More detail: [SKILL.md](SKILL.md), the [local project guide](references/local-pr
 Planned, not built yet:
 
 - **GEO audit:** check how well your pages can be found and cited by AI search and answer engines, with the same short, scored, actionable report.
+- **Claude compatibility:** make the skill work in Claude Code and other Claude tools as well as Codex, with install steps and tested prompts for each.
 - **Automatic AI fixing loop:** audit, propose a fix, apply it on a branch, re-check, and repeat until the score stops improving, with a human reviewing every change.
 
 ## Credits
