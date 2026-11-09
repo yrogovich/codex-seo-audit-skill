@@ -1,0 +1,4 @@
+interface:
+  display_name: "Website SEO Audit"
+  short_description: "Evidence-backed SEO audits and prioritized fixes"
+  default_prompt: "Use $seo-audit to audit my website and create an evidence-backed report with a prioritized action plan."
