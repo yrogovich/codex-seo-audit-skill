@@ -136,6 +136,19 @@ class HttpTests(unittest.TestCase):
         self.assertIn("links.orphan_candidates", out)
 
 
+    def test_quick_audit_runs_end_to_end_over_real_connections(self):
+        folder = self.work / "quick"
+        code, out, err = script("quick_audit.py", self.origin + "/", "--allow-local", self.origin, "--output-dir", folder, "--delay", "0.2", "--max-pages", "10")
+        self.assertEqual(code, 0, err)
+        for name in ("score.json", "quick-report.md", "probe/probe.json", "crawl/analysis.json"):
+            self.assertTrue((folder / name).is_file(), name)
+        score = json.loads((folder / "score.json").read_text())
+        self.assertEqual({t["track"] for t in score["tracks"]}, {"technical", "content"})
+        self.assertIn("Score:", out)
+        self.assertIn("Fix first", out)
+        self.assertNotIn("TOPSECRETVALUE", (folder / "probe" / "probe.json").read_text())
+
+
 class TlsTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

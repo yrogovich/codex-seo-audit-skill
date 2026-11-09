@@ -92,12 +92,17 @@ def render_finding(f):
 def action_where(action):
     if action.get("affected") is not None and action.get("total"):
         return "%s of %s %s" % (action["affected"], action["total"], action.get("unit") or "items")
-    return "see score.json"
+    return "whole site"
 
 
 def google_text(action):
     basis, link = action.get("basis"), action.get("google")
     return "[%s](%s)" % (basis, link) if basis and link else "our check"
+
+
+def shown(part):
+    """A track or area score for a table: the number, 'not checked' (could not run) or 'n/a' (nothing to check)."""
+    return "n/a" if not part["checks_applicable"] else "not checked" if part["score"] is None else part["score"]
 
 
 def render_score(score):
@@ -110,7 +115,7 @@ def render_score(score):
         overall["score"], round(overall["coverage"] * 100), overall["checks_measured"], overall["checks_applicable"], score["label"]), ""]
     if score.get("tracks"):
         lines += ["| Track | Score | Checks measured |", "| --- | --- | --- |"]
-        lines += ["| %s | %s | %d of %d |" % (t["label"], "not checked" if t["score"] is None else t["score"], t["checks_measured"], t["checks_applicable"]) for t in score["tracks"]]
+        lines += ["| %s | %s | %d of %d |" % (t["label"], shown(t), t["checks_measured"], t["checks_applicable"]) for t in score["tracks"]]
         lines.append("")
     crawl = score.get("crawl")
     if crawl and not crawl["complete"]:
@@ -122,7 +127,7 @@ def render_score(score):
         lines += ["", "**Fix first** (points the score would gain if the check fully passed):", "", "| Fix | Track | Points | Where | Google |", "| --- | --- | --- | --- | --- |"]
         lines += ["| %s | %s | +%s | %s | %s |" % (cell(a["fix"]), (a.get("track") or "-").capitalize(), a["points_to_gain"], cell(action_where(a)), google_text(a)) for a in score["actions"][:5]]
     lines += ["", "**By area:**", "", "| Area | Score | Checks measured |", "| --- | --- | --- |"]
-    lines += ["| %s | %s | %d of %d |" % (cell(a["label"]), "not checked" if a["score"] is None else a["score"], a["checks_measured"], a["checks_applicable"]) for a in score.get("areas", [])]
+    lines += ["| %s | %s | %d of %d |" % (cell(a["label"]), shown(a), a["checks_measured"], a["checks_applicable"]) for a in score.get("areas", [])]
     unchecked = [(k.split(": ", 1)[1], len(v)) for k, v in (score.get("not_measured_groups") or {}).items() if k.startswith("not-measured:")]
     if unchecked:
         lines += ["", "**Not checked** (left out of the score, not counted as passes):"]

@@ -252,6 +252,21 @@ class ScoreSectionTests(unittest.TestCase):
         report = self.render_with_score(probe)["report"]
         self.assertIn("- main-fetch-failed: The audited URL did not return a successful response.", report)
 
+    def test_areas_with_nothing_to_check_say_n_a_and_unrun_areas_say_not_checked(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            folder = build(temporary)
+            (folder / "action-plan.md").unlink()
+            (folder / "report.md").unlink()
+            data = {"links.broken_internal": (3, 20), "structured.json_ld_syntax_error": (0, 0), "structured.json_ld_missing_type": (0, 0), "structured.json_ld_placeholder": (0, 0)}
+            ctx = score_audit.Context(analysis_doc(data), healthy_probe())
+            (folder / "score.json").write_text(json.dumps(score_audit.build_report(score_audit.load_rubric(score_audit.RUBRIC), ctx, [])))
+            narrative = folder.parent / "narrative.md"
+            narrative.write_text(NARRATIVE)
+            run_render(folder, "--narrative", str(narrative))
+            report = (folder / "report.md").read_text()
+        self.assertIn("| Structured data | n/a | 0 of 0 |", report)       # no JSON-LD on any page: nothing to check
+        self.assertIn("| Performance | not checked | 0 of 5 |", report)    # no speed data supplied
+
     def test_an_older_score_file_without_tracks_still_renders(self):
         result = self.render_with_score(legacy=True)
         self.assertEqual(result["code"], 0, result["err"])

@@ -4,6 +4,7 @@ Optional Python scripts (Python 3.9+, standard library only). They collect evide
 
 | Script | Use it to |
 | --- | --- |
+| [quick_audit.py](#quick-audit) | Fastest way in: probe, crawl, analyze and score in one command |
 | [probe.py](#site-probe) | Check one URL and its site: redirects, robots.txt, sitemaps, variants |
 | [crawl.py](#crawl-and-analysis) | Crawl within limits and build the URL inventory |
 | [analyze_crawl.py](#crawl-and-analysis) | List likely problems from a crawl |
@@ -15,6 +16,20 @@ Optional Python scripts (Python 3.9+, standard library only). They collect evide
 | [validate_audit.py](#check-the-audit-folder) | Check a finished audit folder |
 
 Rules for all of them: run them from the installed skill folder (not the audited project). Save output under the audit's `evidence/` folder. Output folders and files must be new, and are never overwritten. Replace the example URLs and paths with your real ones. Do not run them against an unrelated example site.
+
+## Quick audit
+
+```sh
+python3 scripts/quick_audit.py https://example.com
+```
+
+Runs probe, crawl (50 pages), analysis and score, then prints a score card: the 0-100 score, Technical and Content scores, blockers and the top fixes, each marked as a Google requirement, Google guidance or our own check. It writes `seo-audits/<host>/<date>-quick/` with `quick-report.md`, `score.json`, `probe/` and `crawl/` (the same files the manual steps make). Usually one to two minutes.
+
+- Limits: `--max-pages` (50), `--max-seconds` (240), `--delay` (1 s per request, minimum 0.2). `--output-dir` sets a new folder.
+- `--pagespeed` and `--crux` are opt-in because they send the URL to Google (CrUX needs `CRUX_API_KEY`). Without a key they are skipped with a note. They are always skipped for local projects.
+- Local project: `--allow-local http://localhost:3000`, plus `--ignore-robots-for-local` for the robots exception. `--baseline old/score.json` compares with an earlier run.
+- If robots.txt cannot be read or no pages could be crawled, the score uses the site checks only and says so. Exit code 0 means a score was written, 1 means the site could not be fetched.
+- It is a scan, not a full audit: raw HTML only, no `findings.json`, no per-finding evidence, no content-quality judgment. Use the full audit for the fix plan.
 
 ## Site probe
 

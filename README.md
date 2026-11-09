@@ -43,6 +43,17 @@ Can you find the installed $seo-audit skill?
 Tell me which audit modes it supports. Do not start an audit yet.
 ```
 
+## Quick scan (one to two minutes)
+
+Want a fast check first? Paste this:
+
+```text
+Use $seo-audit to run a quick scan of https://example.com.
+Show the score, the Technical and Content scores, and the top fixes.
+```
+
+It crawls up to 50 pages and gives a score card, blockers and the top fixes. Each fix is marked as a Google requirement, Google guidance or our own check. It saves `quick-report.md`. From a terminal: `python3 scripts/quick_audit.py https://example.com`. A quick scan is not a full audit. For the evidence and a fix plan, use the prompts below.
+
 ## Audit a live website
 
 Open the folder where you want the report saved. Replace `https://example.com` with your address:
@@ -121,6 +132,7 @@ These Python scripts need Python 3.9+ and no extra packages. They collect eviden
 
 | Script | What it does |
 | --- | --- |
+| `quick_audit.py` | One command: probe, crawl, analyze and score, then a score card with the top fixes |
 | `probe.py` | Checks one URL and its site: redirects, headers, robots.txt, sitemaps, www/https variants, missing-page behavior |
 | `crawl.py` | Crawls politely and read-only (100 pages, one request per second, robots.txt honored) and saves pages, links and `url-inventory.csv` |
 | `analyze_crawl.py` | Turns a crawl into a list of likely problems with affected pages. These are leads, not verdicts |

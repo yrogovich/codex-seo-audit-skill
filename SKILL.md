@@ -11,6 +11,10 @@ Audit the real website and give findings the reader can act on. A full audit cov
 
 For a codebase, a localhost URL or a pre-launch review, use `mode: local-project` and read [local-project.md](references/local-project.md) first. Look at the source and the running pages together, and prefer a production build. With no URL, start from the current project and find its run command and port. Checks that only work in production stay "pending". They are not local bugs.
 
+## Quick scan
+
+If the user wants a fast check or just a score, run `scripts/quick_audit.py <url>` and show its score card: score, Technical and Content scores, blockers and the top fixes. Say it is a scan, not a full audit: it reads raw HTML, has no per-finding evidence and cannot judge content quality. Offer the full audit for the fix plan. For a local project add `--allow-local http://localhost:3000`. Use `--pagespeed` or `--crux` only if sending the URL to Google is fine. If scripts cannot run, do a short audit by hand.
+
 ## Collect evidence
 
 1. **Find the target.** Use the URL from the request or the current project. For a public site with no URL, ask. Never pick a remembered client site. Infer business type, page types, language, audience and goals from the site, and state your assumptions. Ask only about things that change the audit. Defaults: Google organic search, mobile first, public read-only inspection, the user's language.

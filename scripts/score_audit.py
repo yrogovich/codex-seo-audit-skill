@@ -373,7 +373,7 @@ def compare(current, baseline):
 
 
 def where(action):
-    return "%s of %s %s" % (action["affected"], action["total"], action["unit"]) if action["affected"] is not None and action["total"] else "see score.json"
+    return "%s of %s %s" % (action["affected"], action["total"], action["unit"]) if action["affected"] is not None and action["total"] else "whole site"
 
 
 def summary_text(report):
@@ -384,7 +384,7 @@ def summary_text(report):
         overall["score"], round(overall["coverage"] * 100), overall["checks_measured"], overall["checks_applicable"], report["rubric"]["version"])]
     if report["crawl"] and not report["crawl"]["complete"]:
         lines.append("Note: " + report["crawl"]["note"])
-    row = lambda a: "  %-34s %s" % (a["label"], "not checked" if a["score"] is None else "%5.1f  (%d of %d checks)" % (a["score"], a["checks_measured"], a["checks_applicable"]))  # noqa: E731
+    row = lambda a: "  %-34s %s" % (a["label"], "n/a (nothing to check)" if not a["checks_applicable"] else "not checked" if a["score"] is None else "%5.1f  (%d of %d checks)" % (a["score"], a["checks_measured"], a["checks_applicable"]))  # noqa: E731
     lines += [row(t) for t in report["tracks"]] + ["  By area:"] + ["  " + row(a) for a in report["areas"]]
     lines.append("Blockers: " + (", ".join(b["id"] for b in report["blockers"]) or "none flagged"))
     if report["actions"]:
