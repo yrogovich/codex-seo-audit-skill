@@ -256,9 +256,9 @@ def check_finding(finding, index, ids, mode, roots, issues):
             issues.error("FINDING_TEXT", f"{where}.{key}", f"{key} must be a non-empty string for an actionable finding.")
         elif value is not None and not isinstance(value, str):
             issues.error("FINDING_TEXT", f"{where}.{key}", f"{key} must be a string.")
-    if actionable or "impact_estimate" in finding:
+    if "impact_estimate" in finding:
         check_impact(finding.get("impact_estimate"), f"{where}.impact_estimate", issues)
-    if actionable or "effort" in finding:
+    if "effort" in finding:
         check_effort(finding.get("effort"), f"{where}.effort", issues)
     if actionable and not has_text(finding.get("owner_role")):
         issues.error("FINDING_OWNER", f"{where}.owner_role", "owner_role must be a non-empty string.")
@@ -266,7 +266,7 @@ def check_finding(finding, index, ids, mode, roots, issues):
     if not isinstance(deps, list) or not all(has_text(d) for d in deps):
         issues.error("FINDING_DEPENDENCIES", f"{where}.dependencies", "dependencies must be an array of finding IDs.")
     waiting = finding.get("waiting_time")
-    if actionable or waiting is not None:
+    if waiting is not None:
         if not isinstance(waiting, dict) or not require_keys(waiting, ("estimate", "assumptions"), f"{where}.waiting_time", issues, "WAITING_KEYS"):
             if not isinstance(waiting, dict):
                 issues.error("WAITING_KEYS", f"{where}.waiting_time", "waiting_time must be an object {estimate, assumptions}.")
@@ -515,13 +515,49 @@ def scan_artifacts(audit_dir, issues, stats):
     stats["files_scanned"] = scanned
 
 
-def validate(audit_dir, extra_root=None):
-    issues, stats = Issues(), {}
+def audit_roots(audit_dir, extra_root=None):
+    """Directories evidence references resolve against: the audit folder, then the workspace above seo-audits/."""
     audit_dir = audit_dir.resolve()
     roots = [audit_dir]
     workspace = extra_root or (audit_dir.parent.parent.parent if audit_dir.parent.parent.name == "seo-audits" else None)
     if workspace and workspace.resolve() != audit_dir:
         roots.append(workspace.resolve())
+    return roots
+
+
+def check_document(data, roots, issues):
+    """Validate a parsed findings.json against the contract in references/reporting.md: (mode, findings)."""
+    if not isinstance(data, dict):
+        issues.error("JSON_ROOT", "findings.json", "The top level must be an object.")
+        return None, []
+    require_keys(data, TOP_LEVEL, "findings.json", issues, "TOP_LEVEL_KEYS")
+    if data.get("schema_version") != 1 or isinstance(data.get("schema_version"), bool):
+        issues.error("SCHEMA_VERSION", "schema_version", "schema_version must be the integer 1.")
+    if not has_text(data.get("target")):
+        issues.error("TARGET", "target", "target must be a non-empty string.")
+    if when(data.get("audited_at"), need_tz=True) is None:
+        issues.error("AUDITED_AT", "audited_at", "audited_at must be ISO 8601 with a timezone, for example 2026-11-09T12:00:00+01:00.")
+    mode = pick(data, "mode", MODES, "findings.json", issues, "MODE") if "mode" in data else None
+    check_scope(data.get("scope"), mode, issues)
+    check_coverage(data.get("coverage"), mode, roots, issues)
+    findings = data.get("findings")
+    if not isinstance(findings, list):
+        issues.error("FINDINGS_INVALID", "findings", "findings must be an array (empty is allowed).")
+        findings = []
+    seen = set()
+    for i, finding in enumerate(findings):
+        check_finding(finding, i, seen, mode, roots, issues)
+        if isinstance(finding, dict) and has_text(finding.get("id")):
+            seen.add(finding["id"])
+    check_dependencies(findings, issues)
+    check_sources(data.get("sources"), bool(findings), issues)
+    return mode, findings
+
+
+def validate(audit_dir, extra_root=None):
+    issues, stats = Issues(), {}
+    audit_dir = audit_dir.resolve()
+    roots = audit_roots(audit_dir, extra_root)
     if not re.match(r"\d{4}-\d{2}-\d{2}", audit_dir.name):
         issues.warn("DIR_NAME", audit_dir.name, "Audit folders are named <YYYY-MM-DD>-<run>.")
     for name in REQUIRED_FILES:
@@ -536,30 +572,7 @@ def validate(audit_dir, extra_root=None):
     data = load_json(audit_dir / "findings.json", issues) if (audit_dir / "findings.json").is_file() else None
     mode, findings = None, []
     if data is not None:
-        if not isinstance(data, dict):
-            issues.error("JSON_ROOT", "findings.json", "The top level must be an object.")
-        else:
-            require_keys(data, TOP_LEVEL, "findings.json", issues, "TOP_LEVEL_KEYS")
-            if data.get("schema_version") != 1 or isinstance(data.get("schema_version"), bool):
-                issues.error("SCHEMA_VERSION", "schema_version", "schema_version must be the integer 1.")
-            if not has_text(data.get("target")):
-                issues.error("TARGET", "target", "target must be a non-empty string.")
-            if when(data.get("audited_at"), need_tz=True) is None:
-                issues.error("AUDITED_AT", "audited_at", "audited_at must be ISO 8601 with a timezone, for example 2026-11-09T12:00:00+01:00.")
-            mode = pick(data, "mode", MODES, "findings.json", issues, "MODE") if "mode" in data else None
-            check_scope(data.get("scope"), mode, issues)
-            check_coverage(data.get("coverage"), mode, roots, issues)
-            findings = data.get("findings")
-            if not isinstance(findings, list):
-                issues.error("FINDINGS_INVALID", "findings", "findings must be an array (empty is allowed).")
-                findings = []
-            seen = set()
-            for i, finding in enumerate(findings):
-                check_finding(finding, i, seen, mode, roots, issues)
-                if isinstance(finding, dict) and has_text(finding.get("id")):
-                    seen.add(finding["id"])
-            check_dependencies(findings, issues)
-            check_sources(data.get("sources"), bool(findings), issues)
+        mode, findings = check_document(data, roots, issues)
     inventory = check_inventory(audit_dir / "url-inventory.csv", roots, issues, stats) if (audit_dir / "url-inventory.csv").is_file() else set()
     if inventory and mode != "source-only":
         for i, finding in enumerate(findings):

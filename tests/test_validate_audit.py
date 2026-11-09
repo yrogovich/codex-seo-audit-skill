@@ -168,7 +168,11 @@ class ValidateAuditTests(unittest.TestCase):
         self.check(lambda d: d["findings"][0]["effort"].update(min=None), "EFFORT_BOUNDS")
         self.check(lambda d: d["findings"][0].update(impact_estimate={"level": "huge"}), "IMPACT_KEYS")
         self.check(lambda d: d["findings"][0]["impact_estimate"].update(level="huge"), "IMPACT_LEVEL")
-        self.check(lambda d: d["findings"][0].pop("effort"), "EFFORT_INVALID")
+        with tempfile.TemporaryDirectory() as temporary:
+            def no_estimates(d):
+                for key in ("effort", "impact_estimate", "waiting_time"):
+                    d["findings"][0].pop(key)
+            self.assertEqual(run(build(temporary, no_estimates))[1], [])
         with tempfile.TemporaryDirectory() as temporary:
             def unknown(d):
                 d["findings"][0]["effort"].update(min=None, max=None, unit=None, assumptions="No CMS access; need template source.")

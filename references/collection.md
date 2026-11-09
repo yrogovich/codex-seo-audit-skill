@@ -24,6 +24,10 @@ Search-result snippets and extracted web text are discovery aids, not raw HTML e
 - Set finite URL, response-size, sitemap, and elapsed-time budgets in the chosen crawler; report which cap stopped it. Never expand faceted/query/calendar spaces without bounds. Keep meaningful query parameters; do not normalize distinct content into one page. Strip fragments for HTTP fetch deduplication but preserve original links as evidence.
 - Use only ordinary read-only public resources in the target scope. Skip logout, cart mutations, forms, and other action URLs. Do not bypass authentication or bot challenges. Validate redirect destinations and do not follow public targets into private/local network addresses. Local or authenticated staging is inspected only when explicitly in scope.
 
+## Bundled collectors
+
+When Python 3.9+ and network access are available, prefer the bundled collectors over ad hoc fetching: [probe.py](../scripts/probe.py) for redirects, headers, robots.txt, sitemaps, host variants and missing-page behavior, and [crawl.py](../scripts/crawl.py) for the bounded crawl, which enforces the budgets above in code and writes the inventory. [analyze_crawl.py](../scripts/analyze_crawl.py) then lists candidate issues. See [scripts.md](scripts.md). Their output is evidence and leads; the judgment rules in this skill still apply, including that an unfetched or unrendered area is unknown. Without the scripts, apply the same budgets and checks with whatever tools exist.
+
 ## Select representative pages
 
 Inventory templates and languages before spending the budget. Include the homepage, key service/category/product pages, content listings and detail pages, contact/about/trust pages, and important conversion entry points. Include pagination, filtered variants, translations, and poor-performing URLs when relevant. Render at least one representative per important template, plus anomalies. For small sites inspect every discovered eligible page within the budget.

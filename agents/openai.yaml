@@ -1,4 +1,4 @@
 interface:
   display_name: "Website SEO Audit"
-  short_description: "Full SEO audit with impact and fix-time estimates"
-  default_prompt: "Use $seo-audit to run a full SEO audit of my website or current project, propose concrete solutions, and prioritize them by expected impact and estimated time to implement and validate."
+  short_description: "Evidence-backed SEO audits and prioritized fixes"
+  default_prompt: "Use $seo-audit to audit my website and create an evidence-backed report with a prioritized action plan."

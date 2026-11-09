@@ -74,7 +74,7 @@ class ScriptTests(unittest.TestCase):
 
     def test_collect_encodes_target_and_does_not_leak_key_on_error(self):
         opener = unittest.mock.Mock()
-        opener.open.side_effect = HTTPError("secret-url", 429, "secret-key", {}, None)
+        opener.open.side_effect = HTTPError("secret-url", 429, "secret-key", {}, io.BytesIO(b""))
         with patch.object(psi, "build_opener", return_value=opener), patch.dict(psi.os.environ, {"PAGESPEED_API_KEY": "secret-key"}):
             with self.assertRaisesRegex(ValueError, "PageSpeed HTTP 429") as failure:
                 psi.collect("https://example.com/?a=1&b=2", "mobile", 120)
@@ -143,7 +143,12 @@ class ExtractionTests(unittest.TestCase):
         markup = ('<html><head><title>T</title><style>p{}</style></head><body><script>var hidden = 1</script>'
                   '<noscript>No script</noscript><div>One two</div><div>three</div></body></html>')
         data = html.extract(markup)
-        self.assertEqual(data["visible_text"], {"chars": len("One two three"), "words": 3, "excludes": data["visible_text"]["excludes"]})
+        visible = data["visible_text"]
+        self.assertEqual((visible["chars"], visible["words"]), (len("One two three"), 3))
+        # The hash is of the lower-cased, whitespace-normalised text, so markup and case do not change it.
+        again = html.extract("<html><body><p>ONE   two</p><p>three</p><script>x()</script></body></html>")["visible_text"]
+        self.assertEqual(visible["sha256"], again["sha256"])
+        self.assertIsNone(html.extract("<html><body><script>x()</script></body></html>")["visible_text"]["sha256"])
 
     def test_rendering_hint_needs_marker_and_little_text(self):
         shell = '<html><body><div id="root"></div><noscript>You need to enable JavaScript.</noscript></body></html>'

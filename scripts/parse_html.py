@@ -132,6 +132,7 @@ def extract(html, base_url=None):
     # Chunks are joined with a space so adjacent blocks do not merge into one word.
     visible = " ".join(" ".join(parser.visible).split())
     result["visible_text"] = {"chars": len(visible), "words": len(visible.split()),
+                              "sha256": hashlib.sha256(visible.lower().encode("utf-8")).hexdigest() if visible else None,
                               "excludes": "head, script, style, noscript, template and SVG content"}
     markers = sorted(parser.markers)
     result["rendering_hint"] = {"shell_markers": markers, "visible_text_chars": len(visible),

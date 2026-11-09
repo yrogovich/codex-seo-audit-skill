@@ -79,6 +79,7 @@ def collect(url, strategy, timeout):
             raise ValueError("PageSpeed response exceeded 32 MiB; no complete report saved.")
         return json.loads(payload)
     except HTTPError as exc:
+        exc.close()
         # Do not print request URLs, headers, echoed keys or provider error bodies.
         hint = " Check quota/API-key configuration and retry later." if exc.code in (400, 401, 403, 429) else ""
         raise ValueError(f"PageSpeed HTTP {exc.code}.{hint}") from None
