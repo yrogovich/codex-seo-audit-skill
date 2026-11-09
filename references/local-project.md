@@ -34,6 +34,8 @@ An explicit local-project audit permits inspecting the specified local app even 
 
 Local performance is lab evidence only. Prefer production-preview measurements; label dev-server/HMR overhead, local assets, mocked data, warm caches and absent CDN effects. Report measured bottlenecks without extrapolating production field Core Web Vitals. If a browser or performance tool cannot run, continue the code/HTTP audit and mark those areas unknown.
 
+Use local Lighthouse when available, then summarize its saved JSON with [pagespeed_check.py](../scripts/pagespeed_check.py) using `--input`; see [scripts.md](scripts.md). Hosted PageSpeed cannot reach localhost. Do not publish or tunnel a local project to obtain a score.
+
 ## Findings and launch decision
 
 For each local finding, connect the observed route/URL to the source file and verified line when possible. Include the run mode, response/DOM evidence, production relevance, exact suggested change and retest. If the implementation owner is uncertain, say so. A code-only observation is not a runtime observation.

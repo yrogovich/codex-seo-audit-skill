@@ -32,6 +32,8 @@ Record the sampling rationale. Expand suspicious patterns to several instances b
 
 ## Evidence to preserve
 
+For saved original HTML, [parse_html.py](../scripts/parse_html.py) extracts metadata, headings, links, image attributes and JSON-LD without fetching or executing anything. See [scripts.md](scripts.md) for usage and limitations. Preserve the original response and its headers separately.
+
 For each URL: requested/final URL, discovery source, template, fetch time, method, status and redirect chain if available, content type, robots rules, X-Robots-Tag, canonical, language/hreflang, title, description, headings, internal links, relevant image attributes, structured data, and an evidence reference. Use null/unknown for unavailable fields.
 
 For rendering comparisons: original vs rendered title, canonical, robots, main content and links; consent/auth state; mobile viewport; console/resource errors relevant to missing content; screenshot or DOM excerpt where useful. Browser-only content is a rendering dependency, not automatically an indexing failure.

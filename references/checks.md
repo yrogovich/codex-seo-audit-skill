@@ -38,6 +38,8 @@ Consult current official feature documentation before recommending a type or pro
 
 ## 6. Performance and Core Web Vitals
 
+For full audits, attempt mobile PageSpeed on representative important templates when reachable; include desktop where relevant. Use the bundled runner and measurement guidance in [scripts.md](scripts.md). For focused audits, measure only requested pages. For local projects, use local Lighthouse JSON instead of hosted PSI. Record blocked measurements as unknown and continue other audit areas.
+
 Use field data when available and identify URL versus origin coverage, device, collection period, and percentile. Current good thresholds are LCP <= 2.5 s, INP <= 200 ms, CLS <= 0.1 at the 75th percentile; verify these against web.dev at audit time. Missing field data is unknown, not a pass.
 
 Separate field results from Lighthouse/lab diagnostics. A single lab run is not representative of all visitors. Lighthouse TBT is not field INP. Record environment and repeated-run variability when diagnosing. Identify actual LCP element, layout-shift sources, image/font delivery, main-thread work, third-party cost and caching using available traces. Do not prescribe preloading every image or lazy-loading the LCP image.
