@@ -24,16 +24,11 @@ AREAS = ["Technical and indexing", "Rendering and mobile", "Architecture and int
 def finding(**changes):
     value = {
         "id": "SEO-001", "category": "Indexing", "title": "Noindex on product template", "severity": "High",
-        "confidence": "high", "evidence_status": "observed", "urls": ["https://example.com/a"], "affected_count": 1,
+        "track": "technical", "evidence_status": "observed", "urls": ["https://example.com/a"], "affected_count": 1,
         "count_basis": "complete: every fetched product page", "observation": "Robots meta contains noindex.",
         "impact": "Product pages cannot be indexed.",
         "evidence": [{"ref": "evidence/a.html", "method": "HTTP GET", "captured_at": "2026-11-09T12:00:00+00:00", "excerpt": "noindex"}],
-        "recommendation": "Remove the noindex directive from the template.", "acceptance_test": "Robots meta no longer contains noindex.",
-        "impact_estimate": {"level": "high", "expected_outcome": "Restores index eligibility.", "rationale": "Template-wide.", "confidence": "medium"},
-        "owner_role": "Developer",
-        "effort": {"min": 1, "max": 2, "unit": "hours", "includes": "implementation and validation", "scope": "one shared template",
-                   "assumptions": "Repository access", "confidence": "medium"},
-        "dependencies": [], "waiting_time": {"estimate": "Next release", "assumptions": "Weekly deploys"}}
+        "recommendation": "Remove the noindex directive from the template.", "acceptance_test": "Robots meta no longer contains noindex."}
     value.update(changes)
     return value
 
@@ -104,7 +99,8 @@ class ValidateAuditTests(unittest.TestCase):
 
     def test_enums_and_critical_rules(self):
         self.check(lambda d: d["findings"][0].update(severity="severe"), "FINDING_SEVERITY")
-        self.check(lambda d: d["findings"][0].update(confidence="certain"), "FINDING_CONFIDENCE")
+        self.check(lambda d: d["findings"][0].update(track="devops"), "FINDING_TRACK")
+        self.check(lambda d: d["findings"][0].pop("track"), "FINDING_TRACK")
         self.check(lambda d: d["findings"][0].update(severity="Critical", evidence_status="unverified"), "CRITICAL_UNVERIFIED")
         self.check(lambda d: d["findings"][0].update(severity="critical", evidence_status="inferred"), "CRITICAL_INFERRED", "warning")
         self.check(lambda d: d["coverage"][0].update(status="maybe"), "COVERAGE_STATUS")
@@ -161,59 +157,36 @@ class ValidateAuditTests(unittest.TestCase):
             found, _, _ = run(build(temporary, lambda d: d["findings"][0].update(affected_count=None, count_basis=None)))
             self.assertNotIn(("error", "FINDING_COUNT"), found)
 
-    def test_estimates(self):
-        self.check(lambda d: d["findings"][0]["effort"].update(min=3, max=2), "EFFORT_BOUNDS")
-        self.check(lambda d: d["findings"][0]["effort"].update(unit="days"), "EFFORT_UNIT")
-        self.check(lambda d: d["findings"][0]["effort"].update(min=None, max=None, unit=None, assumptions=""), "EFFORT_UNKNOWN_REASON")
-        self.check(lambda d: d["findings"][0]["effort"].update(min=None), "EFFORT_BOUNDS")
-        self.check(lambda d: d["findings"][0].update(impact_estimate={"level": "huge"}), "IMPACT_KEYS")
-        self.check(lambda d: d["findings"][0]["impact_estimate"].update(level="huge"), "IMPACT_LEVEL")
+    def test_retired_fields_are_ignored(self):
+        """Findings written for the older, longer format (owner, confidence, estimates, dependencies) still validate."""
+        def old_format(d):
+            d["findings"][0].update(confidence="high", owner_role="Developer", dependencies=["SEO-404"],
+                                    impact_estimate={"level": "huge"}, effort={"min": 3, "max": 2}, waiting_time="soon")
         with tempfile.TemporaryDirectory() as temporary:
-            def no_estimates(d):
-                for key in ("effort", "impact_estimate", "waiting_time"):
-                    d["findings"][0].pop(key)
-            self.assertEqual(run(build(temporary, no_estimates))[1], [])
-        with tempfile.TemporaryDirectory() as temporary:
-            def unknown(d):
-                d["findings"][0]["effort"].update(min=None, max=None, unit=None, assumptions="No CMS access; need template source.")
-                d["findings"][0]["impact_estimate"].update(level="unknown", rationale="Needs Search Console data.")
-            self.assertEqual(run(build(temporary, unknown))[1], [])
-        with tempfile.TemporaryDirectory() as temporary:
-            self.assertEqual(run(build(temporary, lambda d: d["findings"][0]["effort"].update(unit="Working days")))[1], [])
+            self.assertEqual(run(build(temporary, old_format))[1], [])
 
     def test_claim_lints(self):
-        self.check(lambda d: d["findings"][0]["impact_estimate"].update(expected_outcome="Organic traffic will grow by 40%."),
-                   "UNSUPPORTED_UPLIFT", "warning")
+        self.check(lambda d: d["findings"][0].update(impact="Organic traffic will grow by 40%."), "UNSUPPORTED_UPLIFT", "warning")
         self.check(lambda d: d["findings"][0].update(evidence_status="inferred", observation="Likely a Google penalty."),
                    "PENALTY_CLAIM", "warning")
 
     def test_info_findings_are_not_forced_into_the_action_plan(self):
         def info(d):
             d["findings"].append({"id": "SEO-002", "category": "Search data", "title": "No Search Console export", "severity": "Info",
-                                  "confidence": "high", "evidence_status": "unverified", "urls": [], "affected_count": None,
+                                  "track": "content", "evidence_status": "unverified", "urls": [], "affected_count": None,
                                   "count_basis": None, "observation": "No export supplied.", "impact": "Query data unknown.",
-                                  "evidence": [], "dependencies": []})
+                                  "evidence": []})
         with tempfile.TemporaryDirectory() as temporary:
             folder = build(temporary, info)
             (folder / "report.md").write_text("SEO-001 and SEO-002\n")
             found, issues, _ = run(folder)
             self.assertNotIn(("error", "ID_NOT_IN_MARKDOWN"), found, issues)
 
-    def test_ids_dependencies_and_markdown_agreement(self):
+    def test_ids_and_markdown_agreement(self):
         def duplicate(d):
             d["findings"].append(finding())
         self.check(duplicate, "FINDING_DUPLICATE_ID")
-
-        def second(d, deps):
-            d["findings"].append(finding(id="SEO-002", dependencies=deps))
-        self.check(lambda d: second(d, ["SEO-999"]), "DEPENDENCY_UNKNOWN")
-        self.check(lambda d: second(d, ["SEO-002"]), "DEPENDENCY_SELF")
-
-        def cycle(d):
-            second(d, ["SEO-001"])
-            d["findings"][0]["dependencies"] = ["SEO-002"]
-        self.check(cycle, "DEPENDENCY_CYCLE")
-        self.check(lambda d: second(d, []), "ID_NOT_IN_MARKDOWN")
+        self.check(lambda d: d["findings"].append(finding(id="SEO-002")), "ID_NOT_IN_MARKDOWN")
         self.check(None, "ID_NOT_IN_MARKDOWN", after=lambda f: (f / "action-plan.md").write_text("empty plan"))
         self.check(None, "UNKNOWN_ID_IN_MARKDOWN", "warning", after=lambda f: (f / "report.md").write_text("SEO-001 and SEO-042"))
 

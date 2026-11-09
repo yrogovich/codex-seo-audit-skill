@@ -105,8 +105,8 @@ Each audit goes in a new folder under `seo-audits/` in your workspace.
 
 | File | What it is for |
 | --- | --- |
-| `report.md` | Start here: findings, examples, explanations |
-| `action-plan.md` | What to fix first, and how to check each fix |
+| `report.md` | Start here: summary, score (if asked), findings split into Technical and Content |
+| `action-plan.md` | Two tables, Technical and Content, most urgent first, with how to check each fix |
 | `launch-checklist.md` | Local audits: checks before and after publishing |
 | `url-inventory.csv` | Pages found and how each was checked (opens in a spreadsheet) |
 | `findings.json` | The findings in a format other tools can read |
@@ -126,7 +126,7 @@ These Python scripts need Python 3.9+ and no extra packages. They collect eviden
 | `analyze_crawl.py` | Turns a crawl into a list of likely problems with affected pages. These are leads, not verdicts |
 | `pagespeed_check.py` | Runs Google PageSpeed Insights on up to 20 pages, or reads a saved Lighthouse report |
 | `crux_check.py` | Gets real-user Core Web Vitals with dates from Google's Chrome UX Report (needs an API key) |
-| `score_audit.py` | Optional 0-100 checklist score with coverage, blockers and top fixes. Only when you ask. Not a Google ranking predictor |
+| `score_audit.py` | Optional 0-100 checklist score with Technical and Content scores, coverage, blockers and top fixes, each marked as a Google requirement, Google guidance or our own check. Only when you ask. Not a Google ranking predictor |
 | `render_report.py` | Builds `action-plan.md` and `report.md` from `findings.json` so they always agree |
 | `validate_audit.py` | Checks a finished audit folder: files, structure, evidence links, matching IDs, saved secrets |
 | `parse_html.py` | Pulls titles, headings, links, images and structured data out of saved HTML |
@@ -194,6 +194,13 @@ The skill checks whether search engines can reach your pages, whether titles and
 It reports missing evidence honestly. It does not promise rankings, and it does not change your site. Ask separately if you want help with a fix.
 
 More detail: [SKILL.md](SKILL.md), the [local project guide](references/local-project.md) and the [report format](references/reporting.md).
+
+## Roadmap
+
+Planned, not built yet:
+
+- **GEO audit:** check how well your pages can be found and cited by AI search and answer engines, with the same short, scored, actionable report.
+- **Automatic AI fixing loop:** audit, propose a fix, apply it on a branch, re-check, and repeat until the score stops improving, with a human reviewing every change.
 
 ## Credits
 

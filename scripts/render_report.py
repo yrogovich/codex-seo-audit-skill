@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Render action-plan.md (and report.md) from findings.json so the files cannot disagree; standard library only.
 
-findings.json is the single source of truth. The renderer refuses a document that fails the contract checks,
-never invents content, and keeps the auditor's own narrative (executive assessment, scope and method) verbatim."""
+findings.json is the single source of truth. Findings are split into two tracks: technical (for developers) and
+content (for writers and editors). The renderer refuses a document that fails the contract checks, never invents
+content, and keeps the auditor's own narrative (the short summary and scope) verbatim."""
 
 import argparse
 import json
@@ -14,10 +15,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import validate_audit as contract  # noqa: E402
 
 SEVERITY_ORDER = ["critical", "high", "medium", "low", "info"]
-PHASES = ["now", "next", "later"]
-PHASE_TITLES = {"now": "Now: confirmed blockers and urgent fixes", "next": "Next: material improvements and dependent work",
-                "later": "Later: minor improvements"}
-URL_LIMIT, EVIDENCE_EXCERPT = 10, 300
+TRACKS = (("technical", "Technical", "for developers"), ("content", "Content", "for writers and editors"))
+URL_LIMIT, EVIDENCE_EXCERPT = 5, 300
 
 
 def cell(value):
@@ -29,63 +28,41 @@ def sev(finding):
     return finding["severity"].strip().lower()
 
 
-def plan_phases(findings):
-    """Base phase from severity, never earlier than any prerequisite; returns {id: phase}."""
-    base = {"critical": "now", "medium": "next", "low": "later"}
-    phase = {}
-    by_id = {f["id"]: f for f in findings}
-    for f in findings:
-        phase[f["id"]] = "now" if sev(f) == "high" and not f.get("dependencies") else "next" if sev(f) == "high" else base[sev(f)]
-    for _ in range(len(findings) + 1):  # relaxation over an acyclic graph; validated beforehand
-        changed = False
-        for f in findings:
-            for dep in f.get("dependencies") or []:
-                if dep in by_id and PHASES.index(phase[dep]) > PHASES.index(phase[f["id"]]):
-                    phase[f["id"]] = phase[dep]
-                    changed = True
-        if not changed:
-            break
-    return phase
+def track_of(finding):
+    return finding["track"].strip().lower()
 
 
-def depth(findings):
-    by_id = {f["id"]: f for f in findings}
-    cache = {}
-
-    def of(fid):
-        if fid not in cache:
-            cache[fid] = 1 + max([of(d) for d in by_id[fid].get("dependencies") or [] if d in by_id] or [-1])
-        return cache[fid]
-    return {f["id"]: of(f["id"]) for f in findings}
+def ordered(findings):
+    """Most severe first, then by ID."""
+    return sorted(findings, key=lambda f: (SEVERITY_ORDER.index(sev(f)), f["id"]))
 
 
-def order_key(finding, levels):
-    return (levels[finding["id"]], SEVERITY_ORDER.index(sev(finding)), finding["id"])
+def affected_text(finding):
+    count = finding.get("affected_count")
+    basis = (finding.get("count_basis") or "").strip()
+    return ("?" if count is None else str(count)) + (" (%s)" % basis[:40] if basis else "")
 
 
-def plan_row(finding):
-    return "| %s | %s | %s | %s | %s | %s |" % (
-        cell(finding["id"]), cell(finding.get("recommendation")), sev(finding).capitalize(),
-        cell(finding.get("owner_role")), cell(", ".join(finding.get("dependencies") or [])),
-        cell(finding.get("acceptance_test")))
+def plan_table(findings):
+    rows = ["| ID | Priority | Fix | Affected | How to check |", "| --- | --- | --- | --- | --- |"]
+    rows += ["| %s | %s | %s | %s | %s |" % (cell(f["id"]), sev(f).capitalize(), cell(f.get("recommendation")), cell(affected_text(f)), cell(f.get("acceptance_test")))
+             for f in ordered(findings)]
+    return rows
 
 
 def render_plan(data):
-    findings = [f for f in data["findings"] if sev(f) != "info"]
+    actionable = [f for f in data["findings"] if sev(f) != "info"]
     info = [f for f in data["findings"] if sev(f) == "info"]
-    phases, levels = plan_phases(findings), depth(findings)
     lines = ["# Action plan: %s" % data["target"], "",
-             "Audit date: %s. Mode: %s. Generated from findings.json by render_report.py; change findings.json and re-render rather than editing this file." % (data["audited_at"], data["mode"]), "",
-             "Priorities follow severity and dependencies; prerequisite fixes are scheduled first.", ""]
-    header = ["| ID | Proposed solution | Priority | Owner | Depends on | Acceptance test |",
-              "| --- | --- | --- | --- | --- | --- |"]
-    for name in PHASES:
-        rows = sorted((f for f in findings if phases[f["id"]] == name), key=lambda f: order_key(f, levels))
-        lines += ["## " + PHASE_TITLES[name], ""]
-        lines += header + [plan_row(f) for f in rows] if rows else ["Nothing in this phase."]
+             "Audit date: %s. Generated from findings.json by render_report.py; change findings.json and re-render rather than editing this file." % data["audited_at"], "",
+             "Work from the top of each table: the most severe findings come first.", ""]
+    for key, label, audience in TRACKS:
+        group = [f for f in actionable if track_of(f) == key]
+        lines += ["## %s fixes (%s)" % (label, audience), ""]
+        lines += plan_table(group) if group else ["Nothing in this group."]
         lines.append("")
-    lines += ["", "## Not scheduled (Info)", ""]
-    lines += ["- %s: %s" % (f["id"], f["title"]) for f in info] or ["None."]
+    lines += ["## Not scheduled (Info)", ""]
+    lines += ["- %s: %s" % (f["id"], f["title"]) for f in ordered(info)] or ["None."]
     return "\n".join(lines) + "\n"
 
 
@@ -94,33 +71,22 @@ def bullets(items):
 
 
 def render_finding(f):
-    lines = ["#### %s: %s" % (f["id"], f["title"]), "",
-             "Severity %s | confidence %s | evidence %s | category %s" % (sev(f).capitalize(), f["confidence"], f["evidence_status"], f["category"]), ""]
-    count = f.get("affected_count")
-    lines.append("**Affected:** %s (%s)" % ("count unknown" if count is None else count, f.get("count_basis") or "basis not stated"))
-    urls = f.get("urls") or []
-    lines += [""] + bullets(["`%s`" % u for u in urls[:URL_LIMIT]])
-    if len(urls) > URL_LIMIT:
-        lines.append("- ... and %d more listed in findings.json" % (len(urls) - URL_LIMIT))
-    lines += ["", "**Observation:** " + f["observation"], "", "**Why it matters:** " + f["impact"], ""]
-    if f.get("evidence"):
-        lines.append("**Evidence:**")
-        for e in f["evidence"]:
-            excerpt = " ".join(str(e.get("excerpt") or "").split())[:EVIDENCE_EXCERPT]
-            lines.append("- `%s` (%s, %s)%s" % (e["ref"], e["method"], e["captured_at"], ": " + excerpt if excerpt else ""))
-        lines.append("")
+    lines = ["#### %s: %s" % (f["id"], f["title"]), "", "%s · %s · %s" % (sev(f).capitalize(), f["evidence_status"], f["category"]), ""]
+    count, urls = f.get("affected_count"), f.get("urls") or []
+    examples = ", ".join("`%s`" % u for u in urls[:URL_LIMIT]) + (" (+%d more in findings.json)" % (len(urls) - URL_LIMIT) if len(urls) > URL_LIMIT else "")
+    one = lambda text: " ".join(str(text).split())  # noqa: E731  (a line break would split the bullet)
+    lines += ["- **Affected:** %s%s" % (affected_text(f) if count is not None else "count unknown", ". " + examples if examples else ""),
+              "- **Problem:** " + one(f["observation"]), "- **Why it matters:** " + one(f["impact"])]
     if sev(f) != "info":
-        lines += ["**Proposed solution:** " + f["recommendation"], "",
-                  "**Owner:** " + f.get("owner_role", ""), ""]
-        if f.get("dependencies"):
-            lines += ["**Depends on:** " + ", ".join(f["dependencies"]), ""]
-        lines += ["**Acceptance test:** " + f["acceptance_test"], ""]
-    local = [("Launch stage", f.get("launch_stage")), ("Runtime mode", f.get("runtime_mode"))]
-    local = ["%s: %s" % (k, v) for k, v in local if v]
+        lines += ["- **Fix:** " + one(f["recommendation"]), "- **Check:** " + one(f["acceptance_test"])]
+    for e in f.get("evidence") or []:
+        excerpt = " ".join(str(e.get("excerpt") or "").split())[:EVIDENCE_EXCERPT]
+        lines.append("- **Evidence:** `%s` (%s, %s)%s" % (e["ref"], e["method"], e["captured_at"], ": " + excerpt if excerpt else ""))
+    local = ["%s: %s" % (k, v) for k, v in (("Launch stage", f.get("launch_stage")), ("Runtime mode", f.get("runtime_mode"))) if v]
     locations = ["`%s%s`" % (s["path"], ":%d" % s["line"] if s.get("line") else "") for s in f.get("source_locations") or []]
     if local or locations:
-        lines += ["**Local project:** " + "; ".join(local + (["source " + ", ".join(locations)] if locations else [])), ""]
-    return lines
+        lines.append("- **Local project:** " + "; ".join(local + (["source " + ", ".join(locations)] if locations else [])))
+    return lines + [""]
 
 
 def action_where(action):
@@ -129,30 +95,38 @@ def action_where(action):
     return "see score.json"
 
 
+def google_text(action):
+    basis, link = action.get("basis"), action.get("google")
+    return "[%s](%s)" % (basis, link) if basis and link else "our check"
+
+
 def render_score(score):
-    """Short, structured score section: number, coverage, area table, blockers, what to fix first."""
+    """Short score section: number, technical and content scores, blockers, what to fix first, then details."""
     overall = score["overall"]
     lines = ["## Checklist score", ""]
     if overall["score"] is None:
         return lines + ["No score was computed: no check could be measured from the evidence supplied.", ""]
     lines += ["**%s / 100.** We could check %d%% of the checklist (%d of %d checks). %s" % (
         overall["score"], round(overall["coverage"] * 100), overall["checks_measured"], overall["checks_applicable"], score["label"]), ""]
+    if score.get("tracks"):
+        lines += ["| Track | Score | Checks measured |", "| --- | --- | --- |"]
+        lines += ["| %s | %s | %d of %d |" % (t["label"], "not checked" if t["score"] is None else t["score"], t["checks_measured"], t["checks_applicable"]) for t in score["tracks"]]
+        lines.append("")
     crawl = score.get("crawl")
     if crawl and not crawl["complete"]:
         lines += ["Note: %s." % crawl["note"], ""]
-    lines += ["| Area | Score | Checks measured |", "| --- | --- | --- |"]
-    for a in score.get("areas", []):
-        lines.append("| %s | %s | %d of %d |" % (cell(a["label"]), "not checked" if a["score"] is None else a["score"], a["checks_measured"], a["checks_applicable"]))
     blockers = score.get("blockers") or []
-    lines += ["", "**Blockers:** " + ("none flagged." if not blockers else "")]
+    lines += ["**Blockers:** " + ("none flagged." if not blockers else "")]
     lines += ["- %s: %s" % (b["id"], b["description"]) for b in blockers]
     if score.get("actions"):
-        lines += ["", "**Fix first** (points the score would gain if the check fully passed):", "", "| Fix | Points | Where | Check |", "| --- | --- | --- | --- |"]
-        lines += ["| %s | +%s | %s | %s |" % (cell(a["fix"]), a["points_to_gain"], cell(action_where(a)), a["id"]) for a in score["actions"]]
+        lines += ["", "**Fix first** (points the score would gain if the check fully passed):", "", "| Fix | Track | Points | Where | Google |", "| --- | --- | --- | --- | --- |"]
+        lines += ["| %s | %s | +%s | %s | %s |" % (cell(a["fix"]), (a.get("track") or "-").capitalize(), a["points_to_gain"], cell(action_where(a)), google_text(a)) for a in score["actions"][:5]]
+    lines += ["", "**By area:**", "", "| Area | Score | Checks measured |", "| --- | --- | --- |"]
+    lines += ["| %s | %s | %d of %d |" % (cell(a["label"]), "not checked" if a["score"] is None else a["score"], a["checks_measured"], a["checks_applicable"]) for a in score.get("areas", [])]
     unchecked = [(k.split(": ", 1)[1], len(v)) for k, v in (score.get("not_measured_groups") or {}).items() if k.startswith("not-measured:")]
     if unchecked:
         lines += ["", "**Not checked** (left out of the score, not counted as passes):"]
-        lines += ["- %d checks: %s" % (n, reason) for reason, n in sorted(unchecked, key=lambda i: -i[1])[:5]]
+        lines += ["- %d checks: %s" % (n, reason) for reason, n in sorted(unchecked, key=lambda i: -i[1])[:3]]
     if score.get("not_covered"):
         lines += ["", "**Not covered by this checklist:** " + "; ".join(score["not_covered"]) + "."]
     lines += ["", "Compare this score only with scores that used the same rubric version and the same checks (comparison key %s)." % score.get("comparison_key", "n/a"), ""]
@@ -161,26 +135,23 @@ def render_score(score):
 
 def render_report(data, narrative, score=None):
     lines = [narrative.strip(), ""] + (render_score(score) if score else [])
-    lines += ["## Coverage", "", "| Area | Status | Checked / discovered | Denominator and limitation | Evidence |", "| --- | --- | --- | --- | --- |"]
-    for c in data["coverage"]:
-        counts = "%s / %s" % ("?" if c["checked_count"] is None else c["checked_count"], "?" if c["discovered_count"] is None else c["discovered_count"])
-        note = " ".join(x for x in (c.get("denominator_note"), c.get("limitation")) if x)
-        lines.append("| %s | %s | %s | %s | %s |" % (cell(c["area"]), cell(c["status"]), counts, cell(note), cell(", ".join(c.get("evidence_refs") or []))))
-    lines += ["", "Coverage status describes how much was inspected, not how healthy the area is.", "", "## Findings", ""]
-    ordered = sorted(data["findings"], key=lambda f: (SEVERITY_ORDER.index(sev(f)), f["id"]))
-    if not ordered:
+    findings = data["findings"]
+    counts = ", ".join("%d %s" % (sum(1 for f in findings if track_of(f) == key and sev(f) != "info"), key) for key, _, _ in TRACKS)
+    lines += ["## Findings", "", "Fix list with priorities: [action-plan.md](action-plan.md) (%s)." % counts, ""]
+    if not findings:
         lines += ["No findings were recorded; see coverage and limitations for what that does and does not establish.", ""]
-    for name in SEVERITY_ORDER:
-        group = [f for f in ordered if sev(f) == name]
+    for key, label, audience in TRACKS:
+        group = ordered([f for f in findings if track_of(f) == key])
         if group:
-            lines += ["### %s" % name.capitalize(), ""]
+            lines += ["### %s (%s)" % (label, audience), ""]
             for f in group:
                 lines += render_finding(f)
-    plan = [f for f in data["findings"] if sev(f) != "info"]
-    phases = plan_phases(plan)
-    lines += ["## Action plan", "", "The prioritised plan with proposed solutions, owners, dependencies and acceptance tests is in [action-plan.md](action-plan.md): %s." % (
-        ", ".join("%d %s" % (sum(1 for f in plan if phases[f["id"]] == p), p) for p in PHASES) or "no actionable findings"), "",
-        "## Limitations and follow-up evidence", ""]
+    lines += ["## Coverage", "", "| Area | Status | Checked / discovered | Denominator and limitation | Evidence |", "| --- | --- | --- | --- | --- |"]
+    for c in data["coverage"]:
+        numbers = "%s / %s" % ("?" if c["checked_count"] is None else c["checked_count"], "?" if c["discovered_count"] is None else c["discovered_count"])
+        note = " ".join(x for x in (c.get("denominator_note"), c.get("limitation")) if x)
+        lines.append("| %s | %s | %s | %s | %s |" % (cell(c["area"]), cell(c["status"]), numbers, cell(note), cell(", ".join(c.get("evidence_refs") or []))))
+    lines += ["", "Coverage status describes how much was inspected, not how healthy the area is.", "", "## Limitations and follow-up evidence", ""]
     limits = ["%s (%s): %s" % (c["area"], c["status"], c["limitation"]) for c in data["coverage"] if c.get("limitation")]
     assumptions = (data.get("scope") or {}).get("assumptions")
     assumptions = [assumptions] if isinstance(assumptions, str) else assumptions or []
@@ -199,7 +170,7 @@ def write_new(path, text, force):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("audit_dir", type=Path)
-    parser.add_argument("--narrative", type=Path, help="Markdown with your executive assessment and scope-and-method sections; enables report.md")
+    parser.add_argument("--narrative", type=Path, help="Markdown with your short summary and scope; enables report.md")
     parser.add_argument("--root", type=Path, help="Extra directory for resolving evidence references")
     parser.add_argument("--force", action="store_true", help="Overwrite action-plan.md and report.md if they exist")
     args = parser.parse_args()
@@ -246,9 +217,9 @@ def main():
             write_new(report_path, render_report(data, narrative, score), True)
             print(report_path)
             if not re.search(r"(?m)^##\s", narrative):
-                print("Note: the narrative has no '## ' headings; report.md needs Executive assessment and Scope and method sections.", file=sys.stderr)
+                print("Note: the narrative has no '## ' headings; start report.md with a '## Summary' section.", file=sys.stderr)
         else:
-            print("report.md not written: pass --narrative with your executive assessment and scope-and-method sections.", file=sys.stderr)
+            print("report.md not written: pass --narrative with your short summary and scope.", file=sys.stderr)
     except (OSError, ValueError) as exc:
         print("Error: %s" % exc, file=sys.stderr)
         return 1

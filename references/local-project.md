@@ -46,7 +46,7 @@ Sort outcomes into three groups:
 - **Verify release configuration:** behavior that depends on the environment, with an unknown release value (robots, public base URL, CMS settings).
 - **Verify after deployment:** things that only exist in production, and production measurements.
 
-Use the normal severity and confidence fields. A development-only restriction is never Critical. A demonstrated production-wide noindex is still a launch blocker. Give a scoped readiness statement: blockers found, no blockers found in the checked scope, or not enough evidence. Never give unconditional launch approval from a sampled local audit.
+Use the normal severity and evidence fields. A development-only restriction is never Critical. A demonstrated production-wide noindex is still a launch blocker. Give a scoped readiness statement: blockers found, no blockers found in the checked scope, or not enough evidence. Never give unconditional launch approval from a sampled local audit.
 
 ## Deliverables
 
@@ -58,4 +58,4 @@ Use `seo-audits/<project-slug>-local/<date>-<run>/` so projects sharing localhos
 
 On local findings add `source_locations` (`[{path, line}]`, line null if unknown), `runtime_mode`, and `launch_stage` (fix-before-launch, verify-release-config or verify-after-deploy). Keep code evidence and runtime evidence as separate entries. These fields are optional outside this mode.
 
-In the launch checklist, give each item a status (pass, fail, pending or not-applicable), evidence, a responsible role and how to verify it. Include fixes to make now and checks still pending in production: public DNS, TLS and host redirects; CDN headers and caching; production robots and noindex; public canonicals, hreflang and sitemaps; real CMS content; deployed error pages and rendering; search-engine access and real indexing; analytics; and field performance once there is data. Mark an item verified only in the environment you tested. Rankings, backlinks and real-user results cannot be measured from localhost.
+In the launch checklist, give each item a status (pass, fail, pending or not-applicable), evidence and how to verify it. Include fixes to make now and checks still pending in production: public DNS, TLS and host redirects; CDN headers and caching; production robots and noindex; public canonicals, hreflang and sitemaps; real CMS content; deployed error pages and rendering; search-engine access and real indexing; analytics; and field performance once there is data. Mark an item verified only in the environment you tested. Rankings, backlinks and real-user results cannot be measured from localhost.

@@ -19,16 +19,27 @@ Every input is optional. The more you supply, the more of the checklist is check
 
 ## How the number is made
 
-- The checks and weights live in [score-rubric.json](score-rubric.json). Each check has a weight from 1 to 5 and a one-line fix.
+- The checks and weights live in [score-rubric.json](score-rubric.json). Each check has a weight from 1 to 5, a one-line fix, a track (**technical** for developers, **content** for writers) and a Google label (below).
 - A check scores 1 when nothing is wrong and drops as more pages are affected: `max(0, 1 - sensitivity x affected / total)`.
 - Overall score = weighted average of the checks that could be checked, times 100. Each area (indexing, links, on-page and so on) gets its own score the same way.
 - Weights are our judgment of how directly a problem can stop crawling or indexing. They are not measured effects on rankings.
+
+## What Google says
+
+Every check has one label, so you can tell Google's rules from our habits:
+
+- **requirement:** one of Google's [technical requirements](https://developers.google.com/search/docs/essentials/technical) for being indexed: Googlebot is not blocked, the page works (HTTP 200), and it has indexable content.
+- **guidance:** Google documents it as recommended practice. The link goes to Google's page on that topic.
+- **hygiene:** our own check. Google does not state it as a rule (for example, our two-hop redirect limit; Googlebot follows about 10 hops).
+
+Weights are still our judgment. Even a requirement check only says the page can be indexed, not that it will be.
 
 ## Read it in this order
 
 1. **Checked %** (coverage). Checks that could not run, such as no CrUX data or no sitemap, are left out. They are not counted as passes, so a high score with low coverage means little.
 2. **Blockers.** A robots.txt that blocks everything, a noindex on the start page, or a failing main URL is flagged next to the score. These matter more than the number, and the score is never capped to hide or add to them.
-3. **Fix first.** The checks that lost the most points, with the affected count and a plain fix. "Points" is roughly how much the score would rise if that check fully passed.
+3. **Technical and Content scores.** The same score split by who does the work.
+4. **Fix first.** The checks that lost the most points, with the affected count, a plain fix and the Google label. "Points" is roughly how much the score would rise if that check fully passed.
 
 ## What it does not cover
 

@@ -1,6 +1,6 @@
 # Sources and design notes
 
-Reviewed on 2026-11-09. Check the current official docs during each audit. This file is a starting point, not a fixed statement of search policy.
+Reviewed on 2026-11-09 (the Google links used by the score rubric were all opened that day). Check the current official docs during each audit. This file is a starting point, not a fixed statement of search policy.
 
 ## Design references
 
@@ -12,7 +12,15 @@ This is an independent Codex workflow. It is not a copy of either project, and n
 ## Official references by topic
 
 - [Search Essentials](https://developers.google.com/search/docs/essentials): basic eligibility and policies.
+- [Technical requirements](https://developers.google.com/search/docs/essentials/technical): the three minimum requirements to be indexed: Googlebot is not blocked, the page works (HTTP 200), and it has indexable content.
 - [robots.txt introduction](https://developers.google.com/search/docs/crawling-indexing/robots/intro): crawling versus indexing controls.
+- [Robots meta tag and X-Robots-Tag](https://developers.google.com/search/docs/crawling-indexing/robots-meta-tag): `noindex` and other rules. The stricter rule wins, and a robots.txt block hides them.
+- [Redirects and Google Search](https://developers.google.com/search/docs/crawling-indexing/301-redirects): permanent and temporary redirects.
+- [HTTP status codes](https://developers.google.com/search/docs/crawling-indexing/http-network-errors): how status codes, soft 404s and redirect hops affect crawling (Googlebot generally follows 10 hops).
+- [Link best practices](https://developers.google.com/search/docs/crawling-indexing/links-crawlable): crawlable `<a href>` links and descriptive anchor text.
+- [Snippets](https://developers.google.com/search/docs/appearance/snippet): meta descriptions and how snippets are made.
+- [Image SEO](https://developers.google.com/search/docs/appearance/google-images): `alt` text and image guidance.
+- [Page experience](https://developers.google.com/search/docs/appearance/page-experience): HTTPS and Core Web Vitals (there is no single page experience signal).
 - [Canonical consolidation](https://developers.google.com/search/docs/crawling-indexing/consolidate-duplicate-urls): canonical signals and duplicate URLs.
 - [Sitemaps](https://developers.google.com/search/docs/crawling-indexing/sitemaps/overview): discovery and sitemap expectations.
 - [JavaScript SEO](https://developers.google.com/search/docs/crawling-indexing/javascript/javascript-seo-basics): rendering, content and link discovery.

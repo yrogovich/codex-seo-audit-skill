@@ -17,16 +17,13 @@ import sys
 
 MODES = {"full", "single-page", "focused", "comparison", "source-only", "local-project"}
 SEVERITIES = {"critical", "high", "medium", "low", "info"}
-LEVELS = {"high", "medium", "low"}
+TRACKS = {"technical", "content"}
 EVIDENCE_STATUSES = {"observed", "inferred", "unverified"}
 COVERAGE_STATUSES = {"checked", "partial", "unknown", "not-applicable"}
-IMPACT_LEVELS = {"high", "medium", "low", "unknown"}
-EFFORT_UNITS = {"minutes", "hours", "working_days"}
 LAUNCH_STAGES = {"fix-before-launch", "verify-release-config", "verify-after-deploy"}
 RUNTIME_MODES = {"development", "production-preview", "unavailable"}
 TOP_LEVEL = ("schema_version", "target", "audited_at", "mode", "scope", "coverage", "findings", "sources")
 COVERAGE_KEYS = ("area", "status", "checked_count", "discovered_count", "denominator_note", "limitation", "evidence_refs")
-EFFORT_KEYS = ("min", "max", "unit", "includes", "scope", "assumptions", "confidence")
 LOCAL_SCOPE = ("project_root", "revision", "working_tree_state", "local_origin", "intended_public_origin",
                "runtime_mode", "content_source", "startup_command", "build_result", "runtime_limitations")
 INVENTORY_COLUMNS = ("url", "final_url", "discovered_via", "template", "fetch_status", "http_status",
@@ -143,47 +140,6 @@ def check_ref(ref, roots, where, issues, missing_level="error"):
     issues.add(missing_level, "REF_MISSING", where, f"Reference {shown(ref)} does not resolve to an existing file or directory.")
 
 
-def check_effort(effort, where, issues):
-    if not isinstance(effort, dict):
-        issues.error("EFFORT_INVALID", where, "effort must be an object.")
-        return
-    if not require_keys(effort, EFFORT_KEYS, where, issues, "EFFORT_KEYS"):
-        return
-    low, high, unit = effort["min"], effort["max"], effort["unit"]
-    if low is None or high is None:
-        if low is not None or high is not None:
-            issues.error("EFFORT_BOUNDS", where, "min and max must both be null (unknown) or both be numbers.")
-        if unit is not None:
-            issues.warn("EFFORT_UNIT", f"{where}.unit", "Use a null unit when the bounds are unknown.")
-        if not has_text(effort["assumptions"]):
-            issues.error("EFFORT_UNKNOWN_REASON", f"{where}.assumptions", "Unknown effort needs the reason and the missing information in assumptions.")
-    else:
-        if not (is_num(low) and is_num(high) and low >= 0 and high >= 0):
-            issues.error("EFFORT_BOUNDS", where, "min and max must be non-negative numbers.")
-        elif low > high:
-            issues.error("EFFORT_BOUNDS", where, "min must not exceed max.")
-        norm = re.sub(r"[ -]+", "_", unit.strip().lower()) if isinstance(unit, str) else None
-        if norm not in EFFORT_UNITS:
-            issues.error("EFFORT_UNIT", f"{where}.unit", "unit must be minutes, hours or working_days; got " + shown(unit) + ".")
-        for key in ("includes", "scope"):
-            if not has_text(effort[key]):
-                issues.warn("EFFORT_DETAIL", f"{where}.{key}", f"effort.{key} should say what the estimate covers.")
-    pick(effort, "confidence", LEVELS, where, issues, "EFFORT_CONFIDENCE")
-
-
-def check_impact(impact, where, issues):
-    if not isinstance(impact, dict):
-        issues.error("IMPACT_INVALID", where, "impact_estimate must be an object.")
-        return
-    if not require_keys(impact, ("level", "expected_outcome", "rationale", "confidence"), where, issues, "IMPACT_KEYS"):
-        return
-    pick(impact, "level", IMPACT_LEVELS, where, issues, "IMPACT_LEVEL")
-    pick(impact, "confidence", LEVELS, where, issues, "IMPACT_CONFIDENCE")
-    for key in ("expected_outcome", "rationale"):
-        if not has_text(impact[key]):
-            issues.error("IMPACT_TEXT", f"{where}.{key}", f"impact_estimate.{key} must be a non-empty string (for unknown impact, say what evidence is needed).")
-
-
 def check_finding(finding, index, ids, mode, roots, issues):
     where = f"findings[{index}]"
     if not isinstance(finding, dict):
@@ -198,7 +154,7 @@ def check_finding(finding, index, ids, mode, roots, issues):
         if not has_text(finding.get(key)):
             issues.error("FINDING_TEXT", f"{where}.{key}", f"{key} must be a non-empty string.")
     severity = pick(finding, "severity", SEVERITIES, where, issues, "FINDING_SEVERITY")
-    pick(finding, "confidence", LEVELS, where, issues, "FINDING_CONFIDENCE")
+    pick(finding, "track", TRACKS, where, issues, "FINDING_TRACK")
     status = pick(finding, "evidence_status", EVIDENCE_STATUSES, where, issues, "FINDING_EVIDENCE_STATUS")
     if severity == "critical" and status == "unverified":
         issues.error("CRITICAL_UNVERIFIED", where, "An unverified suspicion must not be reported as a Critical defect.")
@@ -256,26 +212,8 @@ def check_finding(finding, index, ids, mode, roots, issues):
             issues.error("FINDING_TEXT", f"{where}.{key}", f"{key} must be a non-empty string for an actionable finding.")
         elif value is not None and not isinstance(value, str):
             issues.error("FINDING_TEXT", f"{where}.{key}", f"{key} must be a string.")
-    if "impact_estimate" in finding:
-        check_impact(finding.get("impact_estimate"), f"{where}.impact_estimate", issues)
-    if "effort" in finding:
-        check_effort(finding.get("effort"), f"{where}.effort", issues)
-    if actionable and not has_text(finding.get("owner_role")):
-        issues.error("FINDING_OWNER", f"{where}.owner_role", "owner_role must be a non-empty string.")
-    deps = finding.get("dependencies", [])
-    if not isinstance(deps, list) or not all(has_text(d) for d in deps):
-        issues.error("FINDING_DEPENDENCIES", f"{where}.dependencies", "dependencies must be an array of finding IDs.")
-    waiting = finding.get("waiting_time")
-    if waiting is not None:
-        if not isinstance(waiting, dict) or not require_keys(waiting, ("estimate", "assumptions"), f"{where}.waiting_time", issues, "WAITING_KEYS"):
-            if not isinstance(waiting, dict):
-                issues.error("WAITING_KEYS", f"{where}.waiting_time", "waiting_time must be an object {estimate, assumptions}.")
-        elif waiting["estimate"] is not None and not has_text(waiting["assumptions"]):
-            issues.warn("WAITING_ASSUMPTIONS", f"{where}.waiting_time", "A waiting-time estimate needs its assumptions.")
 
     claims = [finding.get("impact"), finding.get("recommendation")]
-    if isinstance(finding.get("impact_estimate"), dict):
-        claims += [finding["impact_estimate"].get("expected_outcome"), finding["impact_estimate"].get("rationale")]
     for claim in claims:
         if isinstance(claim, str) and UPLIFT.search(claim) and OUTCOME_WORDS.search(claim):
             issues.warn("UNSUPPORTED_UPLIFT", where, "Text appears to promise a percentage traffic/ranking/conversion change; keep estimates qualitative unless measured.")
@@ -294,48 +232,6 @@ def check_finding(finding, index, ids, mode, roots, issues):
                 isinstance(l, dict) and has_text(l.get("path")) and (l.get("line") is None or (is_int(l.get("line")) and l["line"] >= 1))
                 for l in locations):
             issues.error("SOURCE_LOCATIONS", f"{where}.source_locations", "source_locations must be [{path, line}] with line null or a positive integer.")
-
-
-def find_cycle(graph):
-    state = {}
-
-    def visit(node, stack):
-        state[node] = 1
-        for nxt in graph.get(node, ()):
-            if state.get(nxt) == 1:
-                return stack + [node, nxt]
-            if nxt not in state:
-                cycle = visit(nxt, stack + [node])
-                if cycle:
-                    return cycle
-        state[node] = 2
-        return None
-
-    for node in graph:
-        if node not in state:
-            cycle = visit(node, [])
-            if cycle:
-                return cycle
-    return None
-
-
-def check_dependencies(findings, issues):
-    ids = {f["id"] for f in findings if isinstance(f, dict) and has_text(f.get("id"))}
-    graph = {}
-    for i, f in enumerate(findings):
-        if not isinstance(f, dict) or not has_text(f.get("id")) or not isinstance(f.get("dependencies"), list):
-            continue
-        graph[f["id"]] = []
-        for dep in f["dependencies"]:
-            if dep == f["id"]:
-                issues.error("DEPENDENCY_SELF", f"findings[{i}].dependencies", "A finding cannot depend on itself.")
-            elif dep not in ids:
-                issues.error("DEPENDENCY_UNKNOWN", f"findings[{i}].dependencies", f"Unknown finding id {shown(dep)}.")
-            else:
-                graph[f["id"]].append(dep)
-    cycle = find_cycle(graph)
-    if cycle:
-        issues.error("DEPENDENCY_CYCLE", "findings", "Dependency cycle: " + " -> ".join(cycle) + ".")
 
 
 def check_coverage(coverage, mode, roots, issues):
@@ -589,7 +485,6 @@ def check_document(data, roots, issues):
         check_finding(finding, i, seen, mode, roots, issues)
         if isinstance(finding, dict) and has_text(finding.get("id")):
             seen.add(finding["id"])
-    check_dependencies(findings, issues)
     check_sources(data.get("sources"), bool(findings), issues)
     return mode, findings
 

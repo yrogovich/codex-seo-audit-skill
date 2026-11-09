@@ -115,7 +115,7 @@ python3 scripts/score_audit.py --analysis .../analysis.json --probe .../probe.js
   --psi .../summary.json --crux .../summary.json --output /abs/audit/score.json
 ```
 
-All inputs are optional. It prints a short summary and writes `score.json`: the 0-100 score, how much of the checklist could be checked, a score per area, blockers, and a "fix first" list. Checks that could not run are left out, never counted as passes. It is not a Google ranking predictor. Details: [scoring.md](scoring.md).
+All inputs are optional. It prints a short summary and writes `score.json`: the 0-100 score, how much of the checklist could be checked, a Technical and a Content score, a score per area, blockers, and a "fix first" list that says what Google says about each check (requirement, guidance, or our own check). Checks that could not run are left out, never counted as passes. It is not a Google ranking predictor. Details: [scoring.md](scoring.md).
 
 ## Build the report
 
@@ -123,7 +123,7 @@ All inputs are optional. It prints a short summary and writes `score.json`: the 
 python3 scripts/render_report.py /abs/seo-audits/example.com/2026-11-09-1 --narrative narrative.md
 ```
 
-`findings.json` is the source of truth. This writes `action-plan.md` and, with `--narrative`, `report.md` (your executive-assessment and scope sections plus generated coverage, findings, limitations and sources). If `score.json` is in the folder, the report gets a "Checklist score" section. It refuses a `findings.json` that breaks the contract and will not overwrite files without `--force`. Change `findings.json` and re-render. Do not edit the generated files.
+`findings.json` is the source of truth. This writes `action-plan.md` (two tables, Technical and Content, most severe first) and, with `--narrative`, `report.md`: your short summary and scope, then the score (if `score.json` is in the folder), findings split into Technical and Content, and coverage, limitations and sources. It refuses a `findings.json` that breaks the contract and will not overwrite files without `--force`. Change `findings.json` and re-render. Do not edit the generated files.
 
 ## Check the audit folder
 

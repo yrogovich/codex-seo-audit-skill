@@ -20,8 +20,12 @@ score = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(score)
 
 
-def spec_for(check_id, area="a", weight=4, sensitivity=3, **extra):
-    return dict({"id": check_id, "area": area, "weight": weight, "sensitivity": sensitivity, "source": "analysis", "fix": "Fix %s." % check_id}, **extra)
+GOOGLE = "https://developers.google.com/search/docs/essentials"
+
+
+def spec_for(check_id, area="a", weight=4, sensitivity=3, track="technical", **extra):
+    return dict({"id": check_id, "area": area, "track": track, "basis": "guidance", "google": GOOGLE, "weight": weight, "sensitivity": sensitivity,
+                 "source": "analysis", "fix": "Fix %s." % check_id}, **extra)
 
 
 def rubric_file(directory, *checks, version=1):
@@ -125,6 +129,32 @@ class ActionTests(unittest.TestCase):
         self.assertIn("2 of 10", score.summary_text(report))
 
 
+class TrackTests(unittest.TestCase):
+    def test_technical_and_content_get_their_own_scores(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            checks = [spec_for("x.tech", weight=4), spec_for("x.tech2", weight=4), spec_for("x.words", weight=2, track="content", basis="hygiene", google=None)]
+            report = run_checks(temporary, checks, score.Context(analysis({"x.tech": (0, 10), "x.tech2": (5, 10), "x.words": (5, 10)})))
+        tracks = {t["track"]: t for t in report["tracks"]}
+        self.assertEqual((tracks["technical"]["score"], tracks["technical"]["checks_measured"]), (50.0, 2))   # one pass, one scored 0
+        self.assertEqual((tracks["content"]["score"], tracks["content"]["label"]), (0.0, "Content"))
+        self.assertEqual(report["overall"]["score"], 40.0)                                                    # 4 of 10 weight passed
+        self.assertTrue(all(c["track"] in ("technical", "content") for c in report["checks"]))
+
+    def test_a_track_with_nothing_measured_says_so(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            report = run_checks(temporary, [spec_for("x.tech"), spec_for("x.words", track="content", basis="hygiene", google=None)], score.Context(analysis({"x.tech": (0, 10)})))
+        self.assertIsNone({t["track"]: t for t in report["tracks"]}["content"]["score"])
+
+    def test_fix_first_items_carry_track_and_what_google_says(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            checks = [spec_for("x.req", weight=5, basis="requirement"), spec_for("x.own", weight=3, track="content", basis="hygiene", google=None)]
+            report = run_checks(temporary, checks, score.Context(analysis({"x.req": (5, 10), "x.own": (5, 10)})))
+        actions = {a["id"]: a for a in report["actions"]}
+        self.assertEqual((actions["x.req"]["track"], actions["x.req"]["basis"], actions["x.req"]["google"]), ("technical", "requirement", GOOGLE))
+        self.assertEqual((actions["x.own"]["track"], actions["x.own"]["basis"], actions["x.own"]["google"]), ("content", "hygiene", None))
+        self.assertIn("[technical]", score.summary_text(report))
+
+
 class ProbeTests(unittest.TestCase):
     def probe_checks(self, probe):
         rubric = score.load_rubric(score.RUBRIC)
@@ -177,8 +207,8 @@ class FieldAndLabTests(unittest.TestCase):
     def test_crux_ratings_are_averaged_and_missing_data_is_unknown(self):
         row = {"kind": "current", "target": "origin", "form_factor": "PHONE", "status": "measured", "collection_period": {"first_date": "2026-10-05", "last_date": "2026-11-01"},
                "metrics": {"LCP": {"rating": "good"}, "INP": {"rating": "needs-improvement"}, "CLS": {"rating": "poor"}}}
-        checks = [{"id": "perf.o", "area": "a", "weight": 4, "source": "crux", "target": "origin", "form_factor": "PHONE", "metrics": ["LCP", "INP", "CLS"], "fix": "Fix."},
-                  {"id": "perf.u", "area": "a", "weight": 3, "source": "crux", "target": "url", "form_factor": "PHONE", "metrics": ["LCP", "INP", "CLS"], "fix": "Fix."}]
+        base = {"area": "a", "track": "technical", "basis": "guidance", "google": GOOGLE, "fix": "Fix.", "source": "crux", "form_factor": "PHONE", "metrics": ["LCP", "INP", "CLS"]}
+        checks = [dict(base, id="perf.o", weight=4, target="origin"), dict(base, id="perf.u", weight=3, target="url")]
         with tempfile.TemporaryDirectory() as temporary:
             report = by_id(run_checks(temporary, checks, score.Context(crux=[{"results": [row]}])))
             nodata = by_id(run_checks(temporary, checks, score.Context(crux=[{"results": [dict(row, status="no-data")]}])))
@@ -189,7 +219,8 @@ class FieldAndLabTests(unittest.TestCase):
 
     def test_lab_metrics_use_the_rubric_thresholds_across_pages(self):
         runs = lambda *values: {"runs": [{"status": "measured", "strategy": "mobile", "lab_metrics": {"LCP": {"value": v}}} for v in values]}  # noqa: E731
-        checks = [{"id": "perf.lcp", "area": "a", "weight": 2, "source": "psi", "strategy": "mobile", "metric": "LCP", "good": 2500, "poor": 4000, "fix": "Fix."}]
+        checks = [{"id": "perf.lcp", "area": "a", "track": "technical", "basis": "guidance", "google": GOOGLE, "weight": 2, "source": "psi", "strategy": "mobile",
+                   "metric": "LCP", "good": 2500, "poor": 4000, "fix": "Fix."}]
         with tempfile.TemporaryDirectory() as temporary:
             report = by_id(run_checks(temporary, checks, score.Context(psi=[runs(2000), runs(3000), runs(5000)])))
             none = by_id(run_checks(temporary, checks, score.Context(psi=[{"runs": [{"status": "error", "strategy": "mobile"}]}])))
@@ -268,9 +299,27 @@ class RubricTests(unittest.TestCase):
         # Checks that only describe intent or cues must stay out of the score.
         self.assertEqual(sorted(set(rubric["unscored_checks"]) & wanted), [])
 
+    def test_every_check_has_a_track_and_says_what_google_says(self):
+        rubric = score.load_rubric(score.RUBRIC)
+        checks = rubric["checks"]
+        self.assertTrue(all(c["track"] in ("technical", "content") for c in checks))
+        self.assertEqual({c["basis"] for c in checks}, {"requirement", "guidance", "hygiene"})
+        self.assertTrue(all(c["google"].startswith("https://") for c in checks if c["basis"] != "hygiene"))
+        # Only Google's three technical requirements are labelled as requirements: not blocked, page works (HTTP 200), indexable content.
+        self.assertEqual(sorted(c["id"] for c in checks if c["basis"] == "requirement"),
+                         ["probe.googlebot_target_allowed", "probe.main_fetch_ok", "status.fetch_failed", "status.server_error"])
+        self.assertTrue(all(c["google"] == "https://developers.google.com/search/docs/essentials/technical" for c in checks if c["basis"] == "requirement"))
+        self.assertGreaterEqual(sum(1 for c in checks if c["track"] == "content"), 5)
+
+    def test_google_links_are_listed_in_sources_md(self):
+        sources = (Path(__file__).resolve().parents[1] / "references" / "sources.md").read_text()
+        links = {c["google"] for c in score.load_rubric(score.RUBRIC)["checks"] if c["google"]}
+        self.assertEqual(sorted(link for link in links if link not in sources), [])
+
     def test_bad_rubrics_are_rejected_with_reasons(self):
         bad = [dict(spec_for("x.a"), weight=9), dict(spec_for("x.a"), area="zzz"), dict(spec_for("x.a"), source="magic"), dict(spec_for("x.a"), fix=""),
-               dict(spec_for("x.a"), source="probe", test="nope"), spec_for("x.a", sensitivity=-1)]
+               dict(spec_for("x.a"), source="probe", test="nope"), spec_for("x.a", sensitivity=-1), spec_for("x.a", track="ops"),
+               spec_for("x.a", basis="opinion"), spec_for("x.a", google=None), spec_for("x.a", basis="requirement", google="not a link")]
         with tempfile.TemporaryDirectory() as temporary:
             for check in bad:
                 with self.assertRaisesRegex(ValueError, "Invalid rubric"):

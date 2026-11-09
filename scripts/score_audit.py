@@ -17,6 +17,8 @@ from urllib.parse import urlsplit
 RUBRIC = Path(__file__).resolve().parents[1] / "references" / "score-rubric.json"
 LABEL = "Internal checklist metric, not a Google ranking predictor."
 SOURCES = {"analysis", "probe", "psi", "crux"}
+TRACKS = {"technical": "Technical", "content": "Content"}
+BASES = {"requirement", "guidance", "hygiene"}
 PARSEABLE = {"urlset", "sitemapindex", "text", "rss", "feed"}
 NOINDEX_SHARE_BLOCKER = 0.5  # operational: most crawled pages carry noindex
 
@@ -85,6 +87,12 @@ def load_rubric(path):
             problems.append("%s: weight must be an integer 1-5" % name)
         if not isinstance(spec.get("fix"), str) or not spec["fix"].strip():
             problems.append("%s: needs a short plain-language fix hint" % name)
+        if spec.get("track") not in TRACKS:
+            problems.append("%s: track must be technical or content" % name)
+        if spec.get("basis") not in BASES:
+            problems.append("%s: basis must be requirement, guidance or hygiene" % name)
+        elif spec["basis"] != "hygiene" and not str(spec.get("google") or "").startswith("https://"):
+            problems.append("%s: a requirement or guidance check needs a Google https link" % name)
         if spec.get("sensitivity") is not None and (not number(spec["sensitivity"]) or spec["sensitivity"] < 0):
             problems.append("%s: sensitivity must be a non-negative number" % name)
         source = spec.get("source")
@@ -302,7 +310,7 @@ def aggregate(items):
 ACTION_LIMIT = 10
 
 
-def build_actions(checks, overall, fixes):
+def build_actions(checks, overall, specs):
     """Checks that lost points, biggest first. points_to_gain is roughly how much the overall score would rise
     if that check fully passed and nothing else changed."""
     total = overall["measured_weight"]
@@ -311,8 +319,9 @@ def build_actions(checks, overall, fixes):
         if c["status"] == "measured" and c["score"] < 1 and total:
             gain = round(100 * c["weight"] * (1 - c["score"]) / total, 1)
             if gain >= 0.1:
-                detail = c["detail"]
-                items.append({"id": c["id"], "area": c["area"], "points_to_gain": gain, "fix": fixes[c["id"]],
+                detail, spec = c["detail"], specs[c["id"]]
+                items.append({"id": c["id"], "area": c["area"], "track": spec["track"], "points_to_gain": gain, "fix": spec["fix"],
+                              "basis": spec["basis"], "google": spec.get("google"),
                               "affected": detail.get("affected"), "total": detail.get("denominator"), "unit": detail.get("unit")})
     return sorted(items, key=lambda a: (-a["points_to_gain"], a["id"]))[:ACTION_LIMIT]
 
@@ -320,9 +329,10 @@ def build_actions(checks, overall, fixes):
 def build_report(rubric, ctx, inputs):
     checks = []
     for spec in rubric["checks"]:
-        checks.append({"id": spec["id"], "area": spec["area"], "weight": spec["weight"], **EVALUATORS[spec["source"]](spec, ctx)})
+        checks.append({"id": spec["id"], "area": spec["area"], "track": spec["track"], "weight": spec["weight"], **EVALUATORS[spec["source"]](spec, ctx)})
     overall = aggregate(checks)
     areas = [dict(area=key, label=label, **aggregate([c for c in checks if c["area"] == key])) for key, label in rubric["areas"].items()]
+    tracks = [dict(track=key, label=label, **aggregate([c for c in checks if c["track"] == key])) for key, label in TRACKS.items()]
     unmeasured = {}
     for c in checks:
         if c["status"] != "measured":
@@ -335,7 +345,7 @@ def build_report(rubric, ctx, inputs):
                  "note": "the whole crawl scope" if ctx.complete else "a partial crawl: the score describes the fetched sample (%s of %s discovered URLs fetched)" % (scope.get("fetched_rows"), scope.get("discovered"))}
     return {"tool": "score_audit.py", "scored_at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "label": LABEL,
             "rubric": {"version": rubric["version"], "sha256": rubric["sha256"], "formula": rubric["score_formula"]},
-            "overall": overall, "areas": areas, "actions": build_actions(checks, overall, {s["id"]: s["fix"] for s in rubric["checks"]}),
+            "overall": overall, "tracks": tracks, "areas": areas, "actions": build_actions(checks, overall, {s["id"]: s for s in rubric["checks"]}),
             "blockers": find_blockers(ctx), "crawl": crawl, "inputs": inputs,
             "comparison_key": hashlib.sha256(("%d|%s" % (rubric["version"], ",".join(ids))).encode()).hexdigest()[:16],
             "checks": checks, "not_measured_groups": unmeasured, "unscored_checks": rubric.get("unscored_checks", {}), "not_covered": rubric.get("not_covered", [])}
@@ -374,11 +384,12 @@ def summary_text(report):
         overall["score"], round(overall["coverage"] * 100), overall["checks_measured"], overall["checks_applicable"], report["rubric"]["version"])]
     if report["crawl"] and not report["crawl"]["complete"]:
         lines.append("Note: " + report["crawl"]["note"])
-    lines += ["  %-34s %s" % (a["label"], "not checked" if a["score"] is None else "%5.1f  (%d of %d checks)" % (a["score"], a["checks_measured"], a["checks_applicable"])) for a in report["areas"]]
+    row = lambda a: "  %-34s %s" % (a["label"], "not checked" if a["score"] is None else "%5.1f  (%d of %d checks)" % (a["score"], a["checks_measured"], a["checks_applicable"]))  # noqa: E731
+    lines += [row(t) for t in report["tracks"]] + ["  By area:"] + ["  " + row(a) for a in report["areas"]]
     lines.append("Blockers: " + (", ".join(b["id"] for b in report["blockers"]) or "none flagged"))
     if report["actions"]:
         lines.append("Fix first (points the score would gain):")
-        lines += ["  +%-4s %s  [%s: %s]" % (a["points_to_gain"], a["fix"], a["id"], where(a)) for a in report["actions"][:5]]
+        lines += ["  +%-4s [%s] %s  (%s: %s)" % (a["points_to_gain"], a["track"], a["fix"], a["id"], where(a)) for a in report["actions"][:5]]
     return "\n".join(lines)
 
 
